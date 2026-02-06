@@ -35,3 +35,7 @@ Palo Alto, CA | [LinkedIn](https://linkedin.com/in/anhqnguyenm)
 ### Skills
 
 `Python` `Solidity` `SQL` `JavaScript/TypeScript` `React` `Next.js` `Vercel` `Git` `AWS` `Hugging Face` `LoRA Fine-Tuning` `Claude Code` `LLM APIs` `Excel` `Apple MDM` `Smart Contracts` `Figma`
+
+---
+
+[Endorphin](https://www.icloud.com/sharedalbum/#B26GWZuqDe1JNh)
