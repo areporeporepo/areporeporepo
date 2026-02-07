@@ -1,12 +1,10 @@
-# Anh Quang Nguyen
-
-Palo Alto, CA | [LinkedIn](https://linkedin.com/in/anhqnguyenm)
+Palo Alto, CA 
 
 ---
 
 ### Education
 
-**University of California, Los Angeles (UCLA)** — International Development Studies B.A., 2019
+**University of California, Los Angeles (UCLA)** — International Development Studies, 2019
 
 ---
 
