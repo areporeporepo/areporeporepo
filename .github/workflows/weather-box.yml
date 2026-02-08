@@ -85,7 +85,6 @@ jobs:
               day_lines.append(f'{day}  {ic} {hi}°/{lo}°  {bar(rain)} {rain:>2}%')
 
           print(f'{hourly_line}  {aqi_label} AQI {aqi_val}')
-          print('─' * 48)
           for l in day_lines:
               print(l)
           " "$WEATHER_DATA" "$AQI_DATA")
