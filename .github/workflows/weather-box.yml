@@ -34,6 +34,10 @@ jobs:
             61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'🌨',80:'🌧',81:'🌧',82:'🌧',
             95:'⛈',96:'⛈',99:'⛈'
           }
+          # ☀ ☁ ⛅ ⛈ render as 1-cell wide in monospace; pad to match 2-cell emoji
+          narrow = {'☀','☁','⛅','⛈'}
+          def ic_pad(ic):
+              return ic + ' ' if ic in narrow else ic
           days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
           d = weather['daily']
@@ -65,7 +69,7 @@ jobs:
               hr = dt.strftime('%I%p').lstrip('0').lower()
               temp = round(h['temperature_2m'][i])
               ic = icons.get(h['weather_code'][i], '?')
-              parts.append(f'{hr} {ic}{temp}°')
+              parts.append(f'{hr} {ic_pad(ic)}{temp}°')
           hourly_line = '  '.join(parts)
 
           # Rain bar
@@ -82,7 +86,7 @@ jobs:
               hi = round(d['temperature_2m_max'][i])
               lo = round(d['temperature_2m_min'][i])
               rain = d['precipitation_probability_max'][i] or 0
-              day_lines.append(f'{day}  {ic} {hi:>3}°/{lo:>2}°  {bar(rain)} {rain:>3}%')
+              day_lines.append(f'{day} {ic_pad(ic)}{hi:>3}°/{lo:>2}°  {bar(rain)} {rain:>3}%')
 
           print(f'{hourly_line}  {aqi_label}{aqi_val}')
           for l in day_lines:
