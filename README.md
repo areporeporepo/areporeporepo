@@ -1,12 +1,3 @@
-Palo Alto, CA 
-
----
-
-### Education
-
-**University of California, Los Angeles (UCLA)** — International Development Studies, 2019
-
----
 
 ### Experience
 
@@ -30,6 +21,11 @@ Palo Alto, CA
 
 ---
 
+### Education
+
+**UCLA** - 2019
+
+---
 ### Skills
 
 `Python` `Solidity` `SQL` `JavaScript/TypeScript` `React` `Next.js` `Vercel` `Git` `AWS` `Hugging Face` `LoRA Fine-Tuning` `Claude Code` `LLM APIs` `Excel` `Apple MDM` `Smart Contracts` `Figma`
