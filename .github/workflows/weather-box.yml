@@ -85,7 +85,7 @@ jobs:
               hi = round(d['temperature_2m_max'][i])
               lo = round(d['temperature_2m_min'][i])
               rain = d['precipitation_probability_max'][i] or 0
-              day_lines.append(f'{day} {ic_pad(ic)}{hi:>3}°/{lo:>2}°  {bar(rain)} {rain:>3}%')
+              day_lines.append(f'{day} {ic_pad(ic)}{hi:>3}°/{lo:>2}°  {rain:>3}%')
 
           print(f'{hourly_line}  {aqi_label}{aqi_val}')
           for l in day_lines:
