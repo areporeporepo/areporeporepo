@@ -14,12 +14,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
           GIST_ID: 8fc319438657e698472538bf19a91c1d
         run: |
-          # 94025 = Menlo Park, CA
           LAT=37.4529
           LON=-122.1817
 
-          # Fetch 7-day + current from Open-Meteo
-          DATA=$(curl -sf "https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/Los_Angeles&forecast_days=7")
+          DATA=$(curl -sf "https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&hourly=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=America/Los_Angeles&forecast_days=5")
 
           WEATHER=$(echo "$DATA" | python3 -c "
           import json, sys
@@ -30,50 +28,55 @@ jobs:
             61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'🌨',80:'🌧',81:'🌧',82:'🌧',
             95:'⛈',96:'⛈',99:'⛈'
           }
-          labels = {
-            0:'Clear',1:'Clear',2:'Cloudy',3:'Overcast',
-            45:'Fog',48:'Fog',51:'Drizzle',53:'Drizzle',55:'Drizzle',
-            61:'Rain',63:'Rain',65:'Rain',71:'Snow',73:'Snow',75:'Snow',
-            80:'Showers',81:'Showers',82:'Showers',95:'Storm',96:'Storm',99:'Storm'
-          }
-          days = ['Mo','Tu','We','Th','Fr','Sa','Su']
+          days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
           data = json.load(sys.stdin)
           d = data['daily']
-          c = data['current']
+          h = data['hourly']
 
-          # Rain bar: ░ for each 20%
+          # --- Line 1: Hourly (next 6 hours from now) ---
+          now = datetime.now()
+          hour_idx = None
+          for i, t in enumerate(h['time']):
+              dt = datetime.strptime(t, '%Y-%m-%dT%H:%M')
+              if dt >= now:
+                  hour_idx = i
+                  break
+          if hour_idx is None:
+              hour_idx = len(h['time']) - 6
+
+          parts = []
+          for i in range(hour_idx, min(hour_idx + 6, len(h['time']))):
+              dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
+              hr = dt.strftime('%I%p').lstrip('0').lower()
+              temp = round(h['temperature_2m'][i])
+              code = h['weather_code'][i]
+              ic = icons.get(code, '?')
+              parts.append(f'{hr} {ic} {temp}°')
+
+          hourly_line = '  '.join(parts)
+
+          # --- Lines 2-5: Next 4 days ---
           def rain_bar(pct):
               filled = round(pct / 20)
               return '▓' * filled + '░' * (5 - filled)
 
-          # Current conditions
-          now_temp = round(c['temperature_2m'])
-          now_code = c['weather_code']
-          now_icon = icons.get(now_code, '🌡')
-          now_label = labels.get(now_code, '?')
-          now_time = datetime.now().strftime('%I:%M%p').lstrip('0').lower()
-
-          lines = []
-          lines.append(f'📍 94025 │ {now_icon} {now_temp}°F {now_label} │ {now_time}')
-          lines.append(f'───────┼──────────────┼──────────')
-
-          for i in range(7):
+          day_lines = []
+          for i in range(1, 5):
               dt = datetime.strptime(d['time'][i], '%Y-%m-%d')
               day = days[dt.weekday()]
-              dd = dt.strftime('%d')
               code = d['weather_code'][i]
-              icon = icons.get(code, '🌡')
+              ic = icons.get(code, '?')
               hi = round(d['temperature_2m_max'][i])
               lo = round(d['temperature_2m_min'][i])
               rain = d['precipitation_probability_max'][i] or 0
               bar = rain_bar(rain)
-              lines.append(f'{day} {dd}  {icon} {hi:>3}°│{lo:>3}°  {bar} {rain:>2}%')
+              day_lines.append(f'{day}  {ic} {hi}°/{lo}°  {bar} {rain:>2}%')
 
-          lines.append(f'───────┴──────────────┴──────────')
-          lines.append(f'        ▓▓▓▓▓ = 💧100%    ░░░░░ = 0%')
-
-          print('\n'.join(lines))
+          print(hourly_line)
+          print('─' * len(hourly_line.encode(\"ascii\", \"ignore\").decode()))
+          for l in day_lines:
+              print(l)
           ")
 
           gh gist edit "$GIST_ID" -f "weather.txt" - <<< "$WEATHER"
