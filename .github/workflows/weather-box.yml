@@ -55,7 +55,7 @@ jobs:
               aqi_val = '–'
               aqi_label = '⚪'
 
-          # Hourly: next 3 hours + AQI (must fit ~40 char pinned gist width)
+          # Hourly: icons only, fit ~8 hours + AQI in ~40 char width
           now = datetime.now()
           hour_idx = 0
           for i, t in enumerate(h['time']):
@@ -64,13 +64,12 @@ jobs:
                   break
 
           parts = []
-          for i in range(hour_idx, min(hour_idx + 3, len(h['time']))):
+          for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
               dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
-              hr = dt.strftime('%I%p').lstrip('0').lower()
-              temp = round(h['temperature_2m'][i])
+              hr = dt.strftime('%I%p').lstrip('0').rstrip('M').lower()
               ic = icons.get(h['weather_code'][i], '?')
-              parts.append(f'{hr} {ic_pad(ic)}{temp}°')
-          hourly_line = '  '.join(parts)
+              parts.append(f'{hr}{ic}')
+          hourly_line = ' '.join(parts)
 
           # Rain bar
           def bar(pct):
