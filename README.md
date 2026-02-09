@@ -4,7 +4,7 @@ Product development, applied research, and protocol design.
 
 ### Skills
 
-`Python` `TypeScript` `React` `Next.js` `Vercel` `Claude Code` `Anthropic API` `LoRA` `Hugging Face` `LeetCode` `GRE`
+`Python` `TypeScript` `React` `Next.js` `Vercel` `Claude Code` `Anthropic API` `LoRA` `Hugging Face` `LeetCode`
 
 ---
 
