@@ -15,8 +15,8 @@ jobs:
           GIST_ID: 8fc319438657e698472538bf19a91c1d
           TZ: America/Los_Angeles
         run: |
-          LAT=37.4275
-          LON=-122.1697
+          LAT=37.44783
+          LON=-122.13604
 
           WEATHER_DATA=$(curl -sf "https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&hourly=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Los_Angeles&forecast_days=5")
 
@@ -96,7 +96,8 @@ jobs:
           else: trend = '→'
 
           # Fallback if NDVI unavailable
-          ndvi_str = f'🌳{canopy_dot}{trend}' if ndvi_val > 0 else '🌳--'
+          ndvi_num = f'{ndvi_val:.2f}'
+          ndvi_str = f'🌳{canopy_dot}{ndvi_num}{trend}' if ndvi_val > 0 else '🌳--'
 
           # --- AQI ---
           aq_h = aq.get('hourly', {})
