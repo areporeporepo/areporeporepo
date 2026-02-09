@@ -40,7 +40,7 @@ def main():
         nir = img.select('B8')
         red = img.select('B4')
         ndvi = nir.subtract(red).divide(nir.add(red))
-        val = ndvi.reduceRegion(ee.Reducer.mean(), point.buffer(50), 10).getInfo()
+        val = ndvi.reduceRegion(ee.Reducer.mean(), point.buffer(200), 10).getInfo()
         ts = img.get('system:time_start').getInfo()
         date = datetime.utcfromtimestamp(ts / 1000).strftime('%Y-%m-%d')
         return val.get('B8', 0) or 0, date
