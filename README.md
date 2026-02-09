@@ -4,7 +4,7 @@ Product development, applied research, and protocol design.
 
 ### Skills
 
-`Python` `Solidity` `SQL` `JavaScript/TypeScript` `React` `Next.js` `Vercel` `Git` `AWS` `Hugging Face` `LoRA Fine-Tuning` `Claude Code` `LLM APIs` `Excel` `Apple MDM` `Smart Contracts` `Figma` `GRE`
+`Python` `TypeScript` `React` `Next.js` `Vercel` `Claude Code` `Anthropic API` `LoRA` `Hugging Face` `LeetCode` `GRE`
 
 ---
 
