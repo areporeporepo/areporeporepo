@@ -1,6 +1,6 @@
 ### Experience
 
-Product development, applied research, and protocol design across consumer technology and financial systems.
+Product development, applied research, and protocol design.
 
 ### Skills
 
