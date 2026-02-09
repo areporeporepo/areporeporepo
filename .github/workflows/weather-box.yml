@@ -9,42 +9,26 @@ jobs:
   update-gist:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Earth Engine API
+        run: pip install earthengine-api
+
       - name: Fetch weather and update gist
         env:
           GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+          GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
           GIST_ID: 8fc319438657e698472538bf19a91c1d
           TZ: America/Los_Angeles
+          LAT: "37.44783"
+          LON: "-122.13604"
         run: |
-          LAT=37.44783
-          LON=-122.13604
-
           WEATHER_DATA=$(curl -sf "https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&hourly=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Los_Angeles&forecast_days=5")
 
           AQI_DATA=$(curl -sf "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}&hourly=pm2_5,pm10,us_aqi&timezone=America/Los_Angeles&forecast_days=1")
 
-          # NASA MODIS NDVI — fetch available dates, then get last 2
-          NDVI_DATES=$(curl -sf --max-time 10 --header 'Accept: application/json' \
-            "https://modis.ornl.gov/rst/api/v1/MOD13Q1/dates?latitude=${LAT}&longitude=${LON}" 2>/dev/null || echo '{"dates":[]}')
-
-          # Extract last 2 MODIS dates and fetch NDVI
-          NDVI_RANGE=$(python3 -c "
-          import json, sys
-          dates = json.loads(sys.argv[1]).get('dates', [])
-          if len(dates) >= 2:
-              print(dates[-2]['modis_date'] + ',' + dates[-1]['modis_date'])
-          elif len(dates) >= 1:
-              print(dates[-1]['modis_date'] + ',' + dates[-1]['modis_date'])
-          else:
-              print('')
-          " "$NDVI_DATES")
-
-          NDVI_DATA='{}'
-          if [ -n "$NDVI_RANGE" ]; then
-            START_D=$(echo "$NDVI_RANGE" | cut -d, -f1)
-            END_D=$(echo "$NDVI_RANGE" | cut -d, -f2)
-            NDVI_DATA=$(curl -sf --max-time 10 --header 'Accept: application/json' \
-              "https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset?latitude=${LAT}&longitude=${LON}&startDate=${START_D}&endDate=${END_D}&kmAboveBelow=0&kmLeftRight=0&band=250m_16_days_NDVI" 2>/dev/null || echo '{}')
-          fi
+          # Sentinel-2 NDVI via Google Earth Engine (10m resolution)
+          NDVI_DATA=$(python3 .github/scripts/canopy.py 2>/dev/null || echo '{"ndvi":0,"prev_ndvi":0,"date":""}')
 
           WEATHER=$(python3 -c "
           import json, sys
@@ -52,7 +36,7 @@ jobs:
 
           weather = json.loads(sys.argv[1])
           aq = json.loads(sys.argv[2])
-          ndvi_raw = json.loads(sys.argv[3])
+          canopy = json.loads(sys.argv[3])
 
           icons = {
             0:'☀',1:'🌤',2:'⛅',3:'☁',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
@@ -74,16 +58,10 @@ jobs:
                   hour_idx = i
                   break
 
-          # --- NDVI from NASA MODIS satellite ---
-          ndvi_val = 0.0
-          ndvi_date = ''
-          ndvi_prev = 0.0
-          subsets = ndvi_raw.get('subset', [])
-          if len(subsets) >= 1:
-              ndvi_val = subsets[-1]['data'][0] / 10000
-              ndvi_date = subsets[-1]['calendar_date']
-          if len(subsets) >= 2:
-              ndvi_prev = subsets[-2]['data'][0] / 10000
+          # --- Canopy from Google Earth Engine Sentinel-2 ---
+          ndvi_val = canopy.get('ndvi', 0)
+          ndvi_prev = canopy.get('prev_ndvi', 0)
+          ndvi_date = canopy.get('date', '')
 
           if ndvi_val >= 0.6: canopy_dot = '🟢'
           elif ndvi_val >= 0.4: canopy_dot = '🟡'
@@ -95,7 +73,6 @@ jobs:
           elif delta < -0.02: trend = '↓'
           else: trend = '→'
 
-          # Fallback if NDVI unavailable
           ndvi_num = f'{ndvi_val:.2f}'
           ndvi_str = f'🌳{canopy_dot}{ndvi_num}{trend}' if ndvi_val > 0 else '🌳--'
 
@@ -114,7 +91,7 @@ jobs:
           humidity = safe(h.get('relative_humidity_2m',[]), hour_idx)
           wind = safe(h.get('wind_speed_10m',[]), hour_idx)
 
-          # Line 1: hourly forecast + canopy from satellite
+          # Line 1: hourly forecast + canopy
           parts = []
           for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
               dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
@@ -150,8 +127,8 @@ jobs:
 
           # Lines below fold (hidden from pinned preview)
           print()
-          ndvi_info = f'NDVI {ndvi_val:.2f} ({ndvi_date}) {trend}' if ndvi_val > 0 else 'NDVI unavailable'
-          print(f'🛰 {ndvi_info}')
+          src = 'Sentinel-2 10m' if ndvi_val > 0 else 'unavailable'
+          print(f'🛰 NDVI {ndvi_num} ({ndvi_date}) {trend} [{src}]')
           print(f'AQI {us_aqi} | PM2.5 {round(pm25)} | Wind {round(wind)} | Hum {round(humidity)}%')
           " "$WEATHER_DATA" "$AQI_DATA" "$NDVI_DATA")
 
