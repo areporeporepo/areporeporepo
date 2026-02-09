@@ -1,10 +1,14 @@
-### Experience
-
-Product development, applied research, and protocol design.
-
 ### Skills
 
-`Python` `TypeScript` `React` `Next.js` `Vercel` `Claude Code` `Anthropic API` `LoRA` `Hugging Face` `LeetCode`
+**Languages** · `Python` `TypeScript` `JavaScript`
+
+**ML / AI** · `PyTorch` `Hugging Face` `braindecode` `MNE-Python` `LoRA` `Anthropic API` `Claude Code`
+
+**Neuro / BCI** · `EEG signal processing` `brain-computer interfaces` `motor imagery decoding`
+
+**Web** · `React` `Next.js` `Vercel` `Node.js`
+
+**Data & Infra** · `GitHub Actions` `REST APIs` `serverless` `SVG generation` `Apple Health pipelines`
 
 ---
 
