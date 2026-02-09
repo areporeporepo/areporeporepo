@@ -10,12 +10,9 @@ Product development, applied research, and protocol design across consumer techn
 
 ### Education
 
+**Winter 2026** — Nuclear Energy: Science, Systems and Society · Fundamentals of Neuroscience
+
 UCLA, 2019
-
-**Courses — Winter 2026**
-
-- Nuclear Energy: Science, Systems and Society
-- Fundamentals of Neuroscience
 
 ---
 
