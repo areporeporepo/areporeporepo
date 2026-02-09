@@ -3,443 +3,815 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Real-time Zone 5 heart rate training tracker with Apple Health integration and GitHub-style contribution visualization">
-    <meta name="keywords" content="heart rate, zone 5, training, fitness, apple health, healthkit">
-    <meta name="author" content="anhsrepo">
-    <title>Zone 5 Heart Rate Tracker - Real-time Training Monitor</title>
+    <title>Zone 5 Daily Tracker</title>
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #0d1117;
+            background: #0d1117;
             color: #e6edf3;
+            padding: 24px;
+            min-height: 100vh;
         }
-        
+
         .container {
-            max-width: 1200px;
+            max-width: 960px;
             margin: 0 auto;
         }
-        
+
+        /* Header */
         .header {
-            text-align: center;
-            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
         }
-        
-        .zone-info {
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .header .subtitle {
+            color: #7d8590;
+            font-size: 14px;
+        }
+
+        /* Streak banner */
+        .streak-banner {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .streak-card {
             background: #161b22;
             border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+            border-radius: 6px;
+            padding: 16px 20px;
+            flex: 1;
+            min-width: 140px;
         }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
+        .streak-card .label {
+            font-size: 12px;
+            color: #7d8590;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
-        
-        .stat-card {
+        .streak-card .value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .streak-card .unit {
+            font-size: 13px;
+            color: #7d8590;
+            margin-left: 2px;
+        }
+        .streak-card.fire .value { color: #f0883e; }
+        .streak-card.goal .value { color: #3fb950; }
+        .streak-card.total .value { color: #58a6ff; }
+        .streak-card.best .value { color: #bc8cff; }
+
+        /* Today status */
+        .today-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .today-bar.done {
+            background: #0e4429;
+            border: 1px solid #26a641;
+            color: #3fb950;
+        }
+        .today-bar.missed {
+            background: #3d1215;
+            border: 1px solid #da3633;
+            color: #f85149;
+        }
+        .today-bar .actions {
+            display: flex;
+            gap: 8px;
+        }
+        .btn {
+            background: #21262d;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        .btn:hover { background: #30363d; }
+        .btn-primary {
+            background: #238636;
+            border-color: #238636;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #2ea043; }
+
+        /* Contribution graph */
+        .graph-section {
             background: #161b22;
             border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 24px;
         }
-        
-        .stat-value {
-            font-size: 2em;
-            font-weight: bold;
-            color: #00d4aa;
+        .graph-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
         }
-        
-        .contribution-graph {
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+        .graph-header h2 {
+            font-size: 14px;
+            font-weight: 400;
+            color: #e6edf3;
         }
-        
-        .graph-container {
+        .graph-header .total-count {
+            font-size: 12px;
+            color: #7d8590;
+        }
+
+        .graph-wrapper {
             overflow-x: auto;
+            padding-bottom: 4px;
         }
-        
-        .graph-grid {
-            display: grid;
-            grid-template-columns: repeat(53, 12px);
-            grid-template-rows: repeat(7, 12px);
-            gap: 2px;
-            margin: 20px 0;
+
+        .graph-table {
+            border-spacing: 3px;
+            border-collapse: separate;
         }
-        
-        .day-cell {
-            width: 10px;
-            height: 10px;
+        .graph-table td {
+            padding: 0;
+        }
+
+        .month-label {
+            font-size: 10px;
+            color: #7d8590;
+            text-align: left;
+            padding: 0 4px 0 0;
+        }
+        .day-label {
+            font-size: 10px;
+            color: #7d8590;
+            text-align: right;
+            padding-right: 6px;
+            width: 28px;
+        }
+
+        .cell {
+            width: 11px;
+            height: 11px;
             border-radius: 2px;
-            background: #161b22;
-            border: 1px solid #30363d;
+            outline: 1px solid rgba(27, 31, 35, 0.06);
+            outline-offset: -1px;
+            position: relative;
+            cursor: pointer;
         }
-        
-        .day-cell.level-0 { background: #161b22; }
-        .day-cell.level-1 { background: #0e4429; }
-        .day-cell.level-2 { background: #006d32; }
-        .day-cell.level-3 { background: #26a641; }
-        .day-cell.level-4 { background: #39d353; }
-        
+        .cell:hover {
+            outline: 2px solid #e6edf3;
+            outline-offset: -1px;
+        }
+        .cell.future {
+            visibility: hidden;
+        }
+
+        .l0 { background: #161b22; }
+        .l1 { background: #0e4429; }
+        .l2 { background: #006d32; }
+        .l3 { background: #26a641; }
+        .l4 { background: #39d353; }
+
+        /* Tooltip */
+        .tooltip {
+            display: none;
+            position: fixed;
+            background: #1b1f23;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 12px;
+            color: #e6edf3;
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .tooltip .tt-mins {
+            font-weight: 600;
+        }
+        .tooltip .tt-date {
+            color: #7d8590;
+            margin-top: 2px;
+        }
+
+        /* Legend */
+        .legend-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
         .legend {
             display: flex;
             align-items: center;
-            gap: 5px;
-            font-size: 12px;
-            margin-top: 10px;
+            gap: 3px;
+            font-size: 11px;
+            color: #7d8590;
         }
-        
-        .legend-item {
-            width: 10px;
-            height: 10px;
+        .legend-cell {
+            width: 11px;
+            height: 11px;
             border-radius: 2px;
         }
-        
-        .file-input {
-            margin: 20px 0;
-            padding: 10px;
-            background: #21262d;
-            border: 1px solid #30363d;
-            border-radius: 6px;
-            color: #e6edf3;
-            width: 100%;
+        .learn-link {
+            font-size: 12px;
+            color: #58a6ff;
+            text-decoration: none;
         }
-        
-        .button {
-            background: #238636;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            margin: 10px 5px;
-        }
-        
-        .button:hover {
-            background: #2ea043;
-        }
-        
-        .today-status {
-            text-align: center;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            font-size: 1.2em;
-            font-weight: bold;
-        }
-        
-        .zone5-achieved {
-            background: linear-gradient(45deg, #238636, #2ea043);
-            color: white;
-        }
-        
-        .zone5-not-achieved {
-            background: linear-gradient(45deg, #da3633, #f85149);
-            color: white;
-        }
-        
-        .real-time-data {
+        .learn-link:hover { text-decoration: underline; }
+
+        /* Activity breakdown */
+        .breakdown {
             background: #161b22;
             border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 24px;
         }
-        
-        .pulse {
-            animation: pulse 2s infinite;
+        .breakdown h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
         }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        .breakdown-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 8px;
         }
-        
-        .sr-only {
-            position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
+        .breakdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
         }
-        
-        @media (prefers-reduced-motion: reduce) {
-            .pulse {
-                animation: none;
-            }
+        .breakdown-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .breakdown-item .mins {
+            color: #7d8590;
+            margin-left: auto;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Manual log */
+        .log-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 16px;
+        }
+        .log-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .log-form {
+            display: flex;
+            gap: 8px;
+            align-items: end;
+            flex-wrap: wrap;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .form-group label {
+            font-size: 11px;
+            color: #7d8590;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .form-group input, .form-group select {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #e6edf3;
+            font-size: 13px;
+            font-family: inherit;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #58a6ff;
+            outline: none;
+        }
+
+        /* Recent activity */
+        .recent {
+            margin-top: 16px;
+            font-size: 12px;
+            color: #7d8590;
+        }
+        .recent-list {
+            list-style: none;
+            margin-top: 8px;
+        }
+        .recent-list li {
+            padding: 4px 0;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #21262d;
+        }
+        .recent-list li:last-child { border-bottom: none; }
+        .recent-list .date { color: #7d8590; }
+        .recent-list .mins-val { color: #e6edf3; font-weight: 500; }
+        .recent-list .mins-val.zero { color: #484f58; }
+
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .streak-banner { gap: 8px; }
+            .streak-card { padding: 10px 12px; min-width: 80px; }
+            .streak-card .value { font-size: 22px; }
+            .graph-wrapper { margin: 0 -8px; padding: 0 8px 4px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏃‍♂️ Zone 5 Heart Rate Tracker</h1>
-            <p>Monitoring cardiovascular performance with GitHub-style visualization</p>
-        </div>
-        
-        <div class="zone-info">
-            <h2>Your Heart Rate Zones (Age: 30)</h2>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value">190</div>
-                    <div>Max HR (bpm)</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">171-190</div>
-                    <div>Zone 5 Range</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="todayMaxHR" aria-label="Today's maximum heart rate">--</div>
-                    <div>Today's Max</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="zone5Minutes" aria-label="Zone 5 training minutes today">--</div>
-                    <div>Zone 5 Minutes</div>
-                </div>
+            <div>
+                <h1>Zone5 😮‍💨</h1>
+                <div class="subtitle">171-190 bpm &middot; Daily accountability tracker</div>
             </div>
         </div>
-        
-        <div class="today-status" id="todayStatus">
-            <div class="pulse">📊 Upload your Apple Health data to see today's Zone 5 status</div>
+
+        <div class="streak-banner">
+            <div class="streak-card fire">
+                <div class="label">Current streak</div>
+                <div><span class="value" id="currentStreak">0</span><span class="unit">days</span></div>
+            </div>
+            <div class="streak-card best">
+                <div class="label">Longest streak</div>
+                <div><span class="value" id="longestStreak">0</span><span class="unit">days</span></div>
+            </div>
+            <div class="streak-card goal">
+                <div class="label">Goal days</div>
+                <div><span class="value" id="goalDays">0</span><span class="unit">/365</span></div>
+            </div>
+            <div class="streak-card total">
+                <div class="label">Total minutes</div>
+                <div><span class="value" id="totalMinutes">0</span><span class="unit">min</span></div>
+            </div>
         </div>
-        
-        <div class="real-time-data">
-            <h3>📱 Apple Health Data Import</h3>
-            <p>Export your Apple Health data and upload the XML file here:</p>
-            <label for="healthDataFile" class="sr-only">Apple Health Export File</label>
-            <input type="file" id="healthDataFile" class="file-input" accept=".xml" aria-describedby="file-help" />
-            <div id="file-help" style="font-size: 12px; color: #7d8590; margin-top: 5px;">Select your Apple Health export XML file</div>
-            <button class="button" onclick="processHealthData()">Analyze Health Data</button>
-            <button class="button" onclick="generateMockData()">Generate Demo Data</button>
+
+        <div class="today-bar missed" id="todayBar">
+            <span id="todayText">No Zone 5 training logged today</span>
+            <div class="actions">
+                <button class="btn btn-primary" onclick="focusLog()">Log now</button>
+            </div>
         </div>
-        
-        <div class="contribution-graph">
-            <h3>Zone 5 Achievement Calendar (GitHub Style)</h3>
-            <p>Darker squares = more time spent in Zone 5</p>
-            <div class="graph-container">
-                <div class="graph-grid" id="contributionGrid"></div>
+
+        <div class="graph-section">
+            <div class="graph-header">
+                <h2 id="graphTitle">0 Zone 5 sessions in the last year</h2>
+                <div class="total-count" id="yearTotal"></div>
+            </div>
+            <div class="graph-wrapper">
+                <table class="graph-table" id="graphTable"></table>
+            </div>
+            <div class="legend-row">
+                <a class="learn-link" href="https://www.trainingpeaks.com/learn/articles/power-training-levels/" target="_blank" rel="noopener">Learn about Zone 5 training</a>
                 <div class="legend">
                     <span>Less</span>
-                    <div class="legend-item day-cell level-0"></div>
-                    <div class="legend-item day-cell level-1"></div>
-                    <div class="legend-item day-cell level-2"></div>
-                    <div class="legend-item day-cell level-3"></div>
-                    <div class="legend-item day-cell level-4"></div>
+                    <div class="legend-cell l0"></div>
+                    <div class="legend-cell l1"></div>
+                    <div class="legend-cell l2"></div>
+                    <div class="legend-cell l3"></div>
+                    <div class="legend-cell l4"></div>
                     <span>More</span>
                 </div>
             </div>
         </div>
-        
-        <div class="zone-info">
-            <h3>🎯 Zone 5 Training Benefits</h3>
-            <ul>
-                <li><strong>VO2 Max Improvement:</strong> Enhances maximum oxygen uptake</li>
-                <li><strong>Neuromuscular Power:</strong> Develops explosive strength</li>
-                <li><strong>Lactate Tolerance:</strong> Improves high-intensity performance</li>
-                <li><strong>Cardiac Output:</strong> Maximizes heart pumping efficiency</li>
-            </ul>
+
+        <div class="breakdown" id="breakdownSection" style="display:none;">
+            <h3>Activity breakdown</h3>
+            <div class="breakdown-grid" id="breakdownGrid"></div>
+        </div>
+
+        <div class="log-section">
+            <h3>Log Zone 5 session</h3>
+            <div class="log-form">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="logDate" />
+                </div>
+                <div class="form-group">
+                    <label>Minutes</label>
+                    <input type="number" id="logMinutes" min="1" max="120" placeholder="15" style="width:80px" />
+                </div>
+                <div class="form-group">
+                    <label>Activity</label>
+                    <select id="logActivity">
+                        <option value="running">Running</option>
+                        <option value="cycling">Cycling</option>
+                        <option value="climbing">Climbing</option>
+                        <option value="rowing">Rowing</option>
+                        <option value="strength">Strength</option>
+                        <option value="threshold">Threshold</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="logSession()">Add</button>
+                <button class="btn" onclick="loadDemo()">Demo data</button>
+            </div>
+            <div class="recent" id="recentSection">
+                <p>Last 7 days</p>
+                <ul class="recent-list" id="recentList"></ul>
+            </div>
         </div>
     </div>
 
+    <div class="tooltip" id="tooltip">
+        <div class="tt-mins"></div>
+        <div class="tt-date"></div>
+    </div>
+
     <script>
-        // Heart rate zones for 30-year-old
-        const MAX_HR = 190; // 220 - 30
-        const ZONE5_MIN = 171; // 90% of max HR
-        const ZONE5_MAX = 190; // 100% of max HR
-        
-        let healthData = [];
-        let zone5Data = {};
-        
-        function initializeGrid() {
-            const grid = document.getElementById('contributionGrid');
-            const today = new Date();
-            const startDate = new Date(today.getFullYear(), 0, 1); // Start of year
-            
-            // Create 371 cells (53 weeks * 7 days)
-            for (let i = 0; i < 371; i++) {
-                const cell = document.createElement('div');
-                cell.className = 'day-cell level-0';
-                
-                const cellDate = new Date(startDate);
-                cellDate.setDate(startDate.getDate() + i);
-                
-                const dateStr = cellDate.toISOString().split('T')[0];
-                cell.setAttribute('data-date', dateStr);
-                cell.title = `${dateStr}: 0 minutes in Zone 5`;
-                
-                grid.appendChild(cell);
-            }
-        }
-        
-        function updateTodayStatus(zone5Minutes, maxHR) {
-            const statusEl = document.getElementById('todayStatus');
-            const todayMaxEl = document.getElementById('todayMaxHR');
-            const zone5MinutesEl = document.getElementById('zone5Minutes');
-            
-            todayMaxEl.textContent = maxHR || '--';
-            zone5MinutesEl.textContent = zone5Minutes || '--';
-            
-            if (zone5Minutes > 0) {
-                statusEl.className = 'today-status zone5-achieved';
-                statusEl.innerHTML = `🎉 Zone 5 ACHIEVED! ${zone5Minutes} minutes at ${ZONE5_MIN}-${ZONE5_MAX} bpm`;
+    const STORAGE_KEY = 'zone5_data';
+    const GOAL_MINUTES = 15;
+
+    // Data structure: { "2026-01-15": { minutes: 22, activity: "running" }, ... }
+    let data = {};
+
+    // --- Persistence ---
+    function load() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) { data = JSON.parse(raw); return; }
+        } catch {}
+        // Try loading from zone5-data.json achievements format
+        data = {};
+    }
+
+    function save() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    // --- Date helpers ---
+    function toStr(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+    }
+    function addDays(d, n) {
+        const r = new Date(d);
+        r.setDate(r.getDate() + n);
+        return r;
+    }
+    function dayOfWeek(d) { return d.getDay(); } // 0=Sun
+
+    function formatDate(str) {
+        const d = new Date(str + 'T12:00:00');
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function getMins(dateStr) {
+        if (!data[dateStr]) return 0;
+        if (typeof data[dateStr] === 'number') return data[dateStr];
+        return data[dateStr].minutes || 0;
+    }
+
+    function getActivity(dateStr) {
+        if (!data[dateStr]) return null;
+        if (typeof data[dateStr] === 'object') return data[dateStr].activity || null;
+        return null;
+    }
+
+    function getLevel(mins) {
+        if (mins === 0) return 0;
+        if (mins < 8) return 1;
+        if (mins < 15) return 2;
+        if (mins < 23) return 3;
+        return 4;
+    }
+
+    // --- Stats ---
+    function calcStats() {
+        const today = new Date();
+        const todayStr = toStr(today);
+        let totalMins = 0;
+        let goalDays = 0;
+        let sessionDays = 0;
+        let currentStreak = 0;
+        let longestStreak = 0;
+        let streak = 0;
+        const activityTotals = {};
+
+        // Walk backwards 365 days for streaks
+        for (let i = 0; i < 365; i++) {
+            const d = toStr(addDays(today, -i));
+            const m = getMins(d);
+            if (m >= GOAL_MINUTES) {
+                streak++;
+                longestStreak = Math.max(longestStreak, streak);
+                if (i === currentStreak || (i === 0 && m >= GOAL_MINUTES)) {
+                    currentStreak = streak;
+                }
             } else {
-                statusEl.className = 'today-status zone5-not-achieved';
-                statusEl.innerHTML = `⏰ No Zone 5 time today. Push harder to reach ${ZONE5_MIN}+ bpm!`;
+                if (i === 0) { currentStreak = 0; }
+                streak = 0;
             }
         }
-        
-        function updateContributionGraph() {
-            const cells = document.querySelectorAll('.day-cell');
-            
-            cells.forEach(cell => {
-                const date = cell.getAttribute('data-date');
-                const minutes = zone5Data[date] || 0;
-                
-                // Determine intensity level (0-4)
-                let level = 0;
-                if (minutes > 0) level = 1;
-                if (minutes >= 5) level = 2;
-                if (minutes >= 15) level = 3;
-                if (minutes >= 30) level = 4;
-                
-                cell.className = `day-cell level-${level}`;
-                cell.title = `${date}: ${minutes} minutes in Zone 5`;
+
+        // Recount current streak properly
+        currentStreak = 0;
+        for (let i = 0; i < 365; i++) {
+            const d = toStr(addDays(today, -i));
+            const m = getMins(d);
+            if (m >= GOAL_MINUTES) {
+                currentStreak++;
+            } else if (i > 0) {
+                break;
+            }
+            // If today is 0 but yesterday was good, streak is 0
+            if (i === 0 && m < GOAL_MINUTES) { currentStreak = 0; break; }
+        }
+
+        // Recount longest streak properly
+        longestStreak = 0;
+        streak = 0;
+        const dates = Object.keys(data).sort();
+        for (const d of dates) {
+            if (getMins(d) >= GOAL_MINUTES) {
+                streak++;
+                longestStreak = Math.max(longestStreak, streak);
+            } else {
+                streak = 0;
+            }
+        }
+        // Also check contiguous date streaks
+        longestStreak = 0;
+        streak = 0;
+        for (let i = 364; i >= 0; i--) {
+            const d = toStr(addDays(today, -i));
+            if (getMins(d) >= GOAL_MINUTES) {
+                streak++;
+                longestStreak = Math.max(longestStreak, streak);
+            } else {
+                streak = 0;
+            }
+        }
+
+        for (const [d, val] of Object.entries(data)) {
+            const m = typeof val === 'number' ? val : (val.minutes || 0);
+            const a = typeof val === 'object' ? (val.activity || 'other') : 'other';
+            if (m > 0) {
+                totalMins += m;
+                sessionDays++;
+                if (m >= GOAL_MINUTES) goalDays++;
+                activityTotals[a] = (activityTotals[a] || 0) + m;
+            }
+        }
+
+        return { totalMins, goalDays, sessionDays, currentStreak, longestStreak, activityTotals };
+    }
+
+    // --- Render contribution graph ---
+    function renderGraph() {
+        const table = document.getElementById('graphTable');
+        const today = new Date();
+        const todayStr = toStr(today);
+
+        // Compute start: go back ~52 weeks, start on Sunday
+        const end = new Date(today);
+        const start = addDays(end, -363);
+        const startSunday = addDays(start, -dayOfWeek(start));
+
+        // Build weeks array
+        const weeks = [];
+        let d = new Date(startSunday);
+        while (d <= end || weeks.length < 53) {
+            const week = [];
+            for (let dow = 0; dow < 7; dow++) {
+                const ds = toStr(d);
+                const isFuture = d > today;
+                const m = getMins(ds);
+                week.push({ date: ds, mins: m, level: getLevel(m), future: isFuture });
+                d = addDays(d, 1);
+            }
+            weeks.push(week);
+            if (weeks.length >= 53) break;
+        }
+
+        // Month labels row
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        let monthRow = '<tr><td></td>';
+        let lastMonth = -1;
+        for (const week of weeks) {
+            const firstDate = new Date(week[0].date + 'T12:00:00');
+            const mon = firstDate.getMonth();
+            if (mon !== lastMonth) {
+                // Count how many weeks this month spans
+                let span = 0;
+                for (let w = weeks.indexOf(week); w < weeks.length; w++) {
+                    const wd = new Date(weeks[w][0].date + 'T12:00:00');
+                    if (wd.getMonth() === mon) span++;
+                    else break;
+                }
+                monthRow += `<td class="month-label" colspan="${span}">${months[mon]}</td>`;
+                lastMonth = mon;
+            }
+        }
+        monthRow += '</tr>';
+
+        // Day rows (Sun=0 to Sat=6)
+        const dayNames = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+        let rows = '';
+        for (let dow = 0; dow < 7; dow++) {
+            rows += `<tr><td class="day-label">${dayNames[dow]}</td>`;
+            for (const week of weeks) {
+                const cell = week[dow];
+                const cls = cell.future ? 'cell future' : `cell l${cell.level}`;
+                rows += `<td><div class="${cls}" data-date="${cell.date}" data-mins="${cell.mins}"></div></td>`;
+            }
+            rows += '</tr>';
+        }
+
+        table.innerHTML = monthRow + rows;
+
+        // Tooltip handlers
+        const tooltip = document.getElementById('tooltip');
+        table.querySelectorAll('.cell:not(.future)').forEach(cell => {
+            cell.addEventListener('mouseenter', e => {
+                const mins = parseInt(cell.dataset.mins);
+                const date = cell.dataset.date;
+                tooltip.querySelector('.tt-mins').textContent = mins === 0
+                    ? 'No Zone 5 training'
+                    : `${mins} minutes in Zone 5`;
+                tooltip.querySelector('.tt-date').textContent = formatDate(date);
+                tooltip.style.display = 'block';
+                const rect = cell.getBoundingClientRect();
+                tooltip.style.left = (rect.left + rect.width / 2 - tooltip.offsetWidth / 2) + 'px';
+                tooltip.style.top = (rect.top - tooltip.offsetHeight - 6) + 'px';
             });
-        }
-        
-        function processHealthData() {
-            const fileInput = document.getElementById('healthDataFile');
-            const file = fileInput.files[0];
-            
-            if (!file) {
-                alert('Please select an Apple Health export file (.xml)');
-                return;
-            }
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(e.target.result, 'text/xml');
-                    
-                    // Parse heart rate records
-                    const heartRateRecords = xmlDoc.querySelectorAll('Record[type="HKQuantityTypeIdentifierHeartRate"]');
-                    
-                    healthData = [];
-                    zone5Data = {};
-                    
-                    heartRateRecords.forEach(record => {
-                        const startDate = record.getAttribute('startDate');
-                        const value = parseFloat(record.getAttribute('value'));
-                        
-                        const date = new Date(startDate);
-                        const dateStr = date.toISOString().split('T')[0];
-                        
-                        healthData.push({
-                            date: dateStr,
-                            time: date.toISOString(),
-                            heartRate: value,
-                            isZone5: value >= ZONE5_MIN && value <= ZONE5_MAX
-                        });
-                    });
-                    
-                    // Calculate Zone 5 minutes per day
-                    calculateZone5Minutes();
-                    updateVisualization();
-                    
-                } catch (error) {
-                    console.error('Error parsing health data:', error);
-                    alert('Error parsing health data. Please ensure you uploaded a valid Apple Health export file.');
-                }
-            };
-            
-            reader.readAsText(file);
-        }
-        
-        function calculateZone5Minutes() {
-            const dailyZone5 = {};
-            
-            healthData.forEach(record => {
-                if (record.isZone5) {
-                    if (!dailyZone5[record.date]) {
-                        dailyZone5[record.date] = 0;
-                    }
-                    dailyZone5[record.date] += 1; // Assume 1 minute per reading
-                }
+            cell.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
             });
-            
-            zone5Data = dailyZone5;
-        }
-        
-        function updateVisualization() {
-            const today = new Date().toISOString().split('T')[0];
-            const todayZone5 = zone5Data[today] || 0;
-            const todayMaxHR = Math.max(...healthData
-                .filter(r => r.date === today)
-                .map(r => r.heartRate)) || 0;
-            
-            updateTodayStatus(todayZone5, todayMaxHR > 0 ? Math.round(todayMaxHR) : null);
-            updateContributionGraph();
-        }
-        
-        function generateMockData() {
-            // Generate realistic mock data for demonstration
-            const today = new Date();
-            healthData = [];
-            zone5Data = {};
-            
-            for (let i = 0; i < 365; i++) {
-                const date = new Date(today);
-                date.setDate(today.getDate() - i);
-                const dateStr = date.toISOString().split('T')[0];
-                
-                // Random chance of having Zone 5 training
-                if (Math.random() > 0.7) { // 30% chance of Zone 5 training
-                    const zone5Minutes = Math.floor(Math.random() * 45) + 5; // 5-50 minutes
-                    zone5Data[dateStr] = zone5Minutes;
-                    
-                    // Generate heart rate data for this day
-                    for (let j = 0; j < zone5Minutes; j++) {
-                        healthData.push({
-                            date: dateStr,
-                            time: date.toISOString(),
-                            heartRate: Math.floor(Math.random() * 20) + ZONE5_MIN,
-                            isZone5: true
-                        });
-                    }
-                }
-            }
-            
-            updateVisualization();
-            alert('Demo data generated! This shows a realistic year of Zone 5 training data.');
-        }
-        
-        // Initialize the page
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeGrid();
-            updateTodayStatus(0, null);
         });
-        
-        // Auto-refresh every minute to check for new data
-        setInterval(function() {
-            if (healthData.length > 0) {
-                updateVisualization();
+    }
+
+    // --- Render everything ---
+    function render() {
+        const stats = calcStats();
+        const today = toStr(new Date());
+        const todayMins = getMins(today);
+
+        // Stats cards
+        document.getElementById('currentStreak').textContent = stats.currentStreak;
+        document.getElementById('longestStreak').textContent = stats.longestStreak;
+        document.getElementById('goalDays').textContent = stats.goalDays;
+        document.getElementById('totalMinutes').textContent = stats.totalMins;
+
+        // Today bar
+        const bar = document.getElementById('todayBar');
+        const text = document.getElementById('todayText');
+        if (todayMins >= GOAL_MINUTES) {
+            bar.className = 'today-bar done';
+            text.textContent = `${todayMins} min Zone 5 today — goal hit!`;
+        } else if (todayMins > 0) {
+            bar.className = 'today-bar missed';
+            text.textContent = `${todayMins} min so far today — need ${GOAL_MINUTES - todayMins} more for goal`;
+        } else {
+            bar.className = 'today-bar missed';
+            text.textContent = 'No Zone 5 training logged today';
+        }
+
+        // Graph title
+        document.getElementById('graphTitle').textContent =
+            `${stats.sessionDays} Zone 5 sessions in the last year`;
+
+        // Contribution graph
+        renderGraph();
+
+        // Activity breakdown
+        const actKeys = Object.keys(stats.activityTotals);
+        const breakdownSection = document.getElementById('breakdownSection');
+        if (actKeys.length > 0) {
+            breakdownSection.style.display = 'block';
+            const colors = {
+                running: '#f0883e', cycling: '#58a6ff', climbing: '#bc8cff',
+                rowing: '#3fb950', strength: '#f778ba', threshold: '#d2a8ff', other: '#7d8590'
+            };
+            const grid = document.getElementById('breakdownGrid');
+            grid.innerHTML = actKeys
+                .sort((a, b) => stats.activityTotals[b] - stats.activityTotals[a])
+                .map(k => `
+                    <div class="breakdown-item">
+                        <div class="breakdown-dot" style="background:${colors[k] || '#7d8590'}"></div>
+                        <span>${k.charAt(0).toUpperCase() + k.slice(1)}</span>
+                        <span class="mins">${stats.activityTotals[k]}m</span>
+                    </div>
+                `).join('');
+        } else {
+            breakdownSection.style.display = 'none';
+        }
+
+        // Recent 7 days
+        const list = document.getElementById('recentList');
+        list.innerHTML = '';
+        for (let i = 0; i < 7; i++) {
+            const d = toStr(addDays(new Date(), -i));
+            const m = getMins(d);
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span class="date">${formatDate(d)}</span>
+                <span class="mins-val ${m === 0 ? 'zero' : ''}">${m > 0 ? m + ' min' : '—'}</span>
+            `;
+            list.appendChild(li);
+        }
+
+        // Default date input to today
+        document.getElementById('logDate').value = today;
+    }
+
+    // --- Log session ---
+    function logSession() {
+        const date = document.getElementById('logDate').value;
+        const mins = parseInt(document.getElementById('logMinutes').value);
+        const activity = document.getElementById('logActivity').value;
+
+        if (!date || !mins || mins < 1) {
+            alert('Enter a valid date and minutes.');
+            return;
+        }
+
+        const existing = getMins(date);
+        data[date] = { minutes: existing + mins, activity: activity };
+        save();
+        render();
+        document.getElementById('logMinutes').value = '';
+    }
+
+    function focusLog() {
+        document.getElementById('logMinutes').focus();
+        document.getElementById('logMinutes').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // --- Demo data ---
+    function loadDemo() {
+        const today = new Date();
+        data = {};
+        const activities = ['running', 'cycling', 'climbing', 'rowing', 'strength', 'threshold'];
+
+        for (let i = 0; i < 365; i++) {
+            const d = toStr(addDays(today, -i));
+            // ~70% chance of training (to simulate accountability)
+            if (Math.random() < 0.7) {
+                const mins = Math.floor(Math.random() * 40) + 5;
+                const act = activities[Math.floor(Math.random() * activities.length)];
+                data[d] = { minutes: mins, activity: act };
             }
-        }, 60000);
+        }
+        save();
+        render();
+    }
+
+    // --- Try loading from zone5-data.json on first visit ---
+    async function tryLoadJson() {
+        if (localStorage.getItem(STORAGE_KEY)) return;
+        try {
+            const resp = await fetch('zone5-data.json');
+            if (!resp.ok) return;
+            const json = await resp.json();
+            if (json.achievements) {
+                for (const [date, mins] of Object.entries(json.achievements)) {
+                    if (mins > 0) {
+                        data[date] = { minutes: mins, activity: 'other' };
+                    }
+                }
+                save();
+            }
+        } catch {}
+    }
+
+    // --- Init ---
+    (async function init() {
+        load();
+        await tryLoadJson();
+        render();
+    })();
     </script>
 </body>
 </html>

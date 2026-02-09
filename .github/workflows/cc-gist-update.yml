@@ -21,4 +21,5 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
         CC_GIST_ID: ${{ secrets.CC_GIST_ID }}
-      run: python .github/scripts/cc_gist_update.py --ci
+        CC_DATA_GIST_ID: ${{ secrets.CC_DATA_GIST_ID }}
+      run: python .github/scripts/cc_gist_update.py

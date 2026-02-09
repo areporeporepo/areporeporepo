@@ -1,34 +1,25 @@
 #!/usr/bin/env python3
-"""Update Claude Code usage gist. Runs locally or in GitHub Actions.
+"""Update Claude Code usage gist. Runs in GitHub Actions.
 
-State is stored in the gist itself (data.json) so both local /maxed
-and the hourly GitHub Action can read/write it.
+State stored in a separate hidden gist (data). The visible pinned
+gist only has the bar + grid. Auto-resets bar after 5h.
 """
 import json
 import os
 import subprocess
-import sys
+from collections import Counter
 from datetime import datetime, timedelta, timezone
-from math import ceil
-from pathlib import Path
 
-# Config
 DATA_ROWS = 4
 WEEKS_PER_ROW = 5
 BAR_WIDTH = 20
 STALE_HOURS = 5
 LEVELS = {0: "·", 1: "░", 2: "█"}
-CONTENT_FILENAME = "\u2800"  # braille blank - invisible title
-DATA_FILENAME = "data.json"
+CONTENT_FILENAME = "\u2800"
+PT = timezone(timedelta(hours=-8))
 
-# Resolve gist ID from env or local file
-GIST_ID = os.environ.get("CC_GIST_ID") or os.environ.get("GIST_ID", "")
-if not GIST_ID:
-    gist_file = Path.home() / ".claude" / "claudemaxxing_gist_id"
-    if gist_file.exists():
-        GIST_ID = gist_file.read_text().strip()
-
-PT = timezone(timedelta(hours=-8))  # Pacific Time (PST)
+CONTENT_GIST_ID = os.environ.get("CC_GIST_ID", "")
+DATA_GIST_ID = os.environ.get("CC_DATA_GIST_ID", "")
 
 
 def gh_api(method, path, **fields):
@@ -39,25 +30,26 @@ def gh_api(method, path, **fields):
     return r.stdout
 
 
-def read_gist_data():
-    """Read data.json from the gist."""
+def read_data():
     try:
-        raw = gh_api("GET", f"/gists/{GIST_ID}")
+        raw = gh_api("GET", f"/gists/{DATA_GIST_ID}")
         gist = json.loads(raw)
-        data_file = gist.get("files", {}).get(DATA_FILENAME)
-        if data_file and data_file.get("content"):
-            return json.loads(data_file["content"])
+        f = gist.get("files", {}).get("cc_data.json")
+        if f and f.get("content"):
+            return json.loads(f["content"])
     except Exception:
         pass
     return {"pct": 0, "ts": None, "dates": []}
 
 
-def write_gist(content, data):
-    """Write both the visible content and data.json to the gist."""
-    data_json = json.dumps(data)
-    gh_api("PATCH", f"/gists/{GIST_ID}",
+def write_data(data):
+    gh_api("PATCH", f"/gists/{DATA_GIST_ID}",
+           **{f"files[cc_data.json][content]": json.dumps(data)})
+
+
+def write_content(content):
+    gh_api("PATCH", f"/gists/{CONTENT_GIST_ID}",
            **{f"files[{CONTENT_FILENAME}][content]": content,
-              f"files[{DATA_FILENAME}][content]": data_json,
               "description": " "})
 
 
@@ -69,7 +61,6 @@ def usage_bar(pct):
 
 
 def generate_grid(dates):
-    from collections import Counter
     counts = dict(Counter(dates))
     today = datetime.now(PT).date()
     current_monday = today - timedelta(days=today.weekday())
@@ -96,33 +87,15 @@ def generate_grid(dates):
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--usage", type=int, help="Set usage percentage (0-100)")
-    parser.add_argument("--ci", action="store_true", help="Running in CI")
-    args = parser.parse_args()
+    data = read_data()
 
-    data = read_gist_data()
-
-    # Update usage if provided
-    if args.usage is not None:
-        data["pct"] = args.usage
-        data["ts"] = datetime.now(PT).isoformat()
-        # Log today
-        today = datetime.now(PT).strftime("%Y-%m-%d")
-        if "dates" not in data:
-            data["dates"] = []
-        data["dates"].append(today)
-
-    # Check staleness - reset bar if usage is old
     pct = data.get("pct", 0)
     ts_str = data.get("ts")
     if ts_str:
         ts = datetime.fromisoformat(ts_str)
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=PT)
-        age_hours = (datetime.now(PT) - ts).total_seconds() / 3600
-        if age_hours > STALE_HOURS:
+        if (datetime.now(PT) - ts).total_seconds() > STALE_HOURS * 3600:
             pct = 0
             data["pct"] = 0
     else:
@@ -132,7 +105,8 @@ def main():
     grid = generate_grid(data.get("dates", []))
     content = f"{bar}\n{grid}"
 
-    write_gist(content, data)
+    write_data(data)
+    write_content(content)
     print(content)
     print("\nupdated gist")
 
