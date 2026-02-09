@@ -1,0 +1,24 @@
+name: CC Gist Update
+
+on:
+  schedule:
+    - cron: '59 * * * *'  # Every hour at :59
+  workflow_dispatch:
+
+jobs:
+  update-gist:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Update gist
+      env:
+        GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+        CC_GIST_ID: ${{ secrets.CC_GIST_ID }}
+      run: python .github/scripts/cc_gist_update.py --ci
