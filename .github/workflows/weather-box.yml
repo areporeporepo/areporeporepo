@@ -154,9 +154,7 @@ jobs:
           print(f'AQI {us_aqi} | PM2.5 {round(pm25)} | Wind {round(wind)} | Hum {round(humidity)}%')
           " "$WEATHER_DATA" "$AQI_DATA" "$NDVI_DATA")
 
-          # Use API directly (gh gist edit is flaky with HTTP 500)
-          ESCAPED=$(echo "$WEATHER" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
-          gh api --method PATCH "/gists/$GIST_ID" \
-            --input - <<EOF
-          {"files":{"aircloudy":{"content":${ESCAPED}}}}
-          EOF
+          for i in 1 2 3; do
+            gh gist edit "$GIST_ID" -f "aircloudy" - <<< "$WEATHER" && break
+            echo "Retry $i..." && sleep 5
+          done
