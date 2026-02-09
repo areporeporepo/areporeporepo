@@ -10,7 +10,7 @@ Product development, applied research, and protocol design.
 
 ### Education
 
-**Winter 2026** — 22.011x · MCB80x
+**Winter 2026** — NBIO 206 · NBIO 220
 
 UCLA, 2019
 
