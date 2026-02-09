@@ -22,12 +22,16 @@ jobs:
 
           AQI_DATA=$(curl -sf "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}&hourly=pm2_5,pm10,us_aqi&timezone=America/Los_Angeles&forecast_days=1")
 
+          # NASA MODIS NDVI satellite data (updates every 16 days)
+          NDVI_DATA=$(curl -sf --header 'Accept: application/json' "https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset?latitude=${LAT}&longitude=${LON}&startDate=A2025001&endDate=A2027001&kmAboveBelow=0&kmLeftRight=0&band=250m_16_days_NDVI" 2>/dev/null || echo '{}')
+
           WEATHER=$(python3 -c "
           import json, sys
           from datetime import datetime
 
           weather = json.loads(sys.argv[1])
           aq = json.loads(sys.argv[2])
+          ndvi_raw = json.loads(sys.argv[3])
 
           icons = {
             0:'☀',1:'🌤',2:'⛅',3:'☁',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
@@ -49,7 +53,32 @@ jobs:
                   hour_idx = i
                   break
 
-          # --- ACI (street-level canopy index) ---
+          # --- NDVI from NASA MODIS satellite ---
+          ndvi_val = 0.0
+          ndvi_date = ''
+          ndvi_prev = 0.0
+          subsets = ndvi_raw.get('subset', [])
+          if len(subsets) >= 1:
+              ndvi_val = subsets[-1]['data'][0] / 10000
+              ndvi_date = subsets[-1]['calendar_date']
+          if len(subsets) >= 2:
+              ndvi_prev = subsets[-2]['data'][0] / 10000
+
+          # Canopy level: NDVI mapped to intuitive scale
+          # 0.0-0.1 = bare, 0.1-0.2 = sparse, 0.2-0.4 = light
+          # 0.4-0.6 = moderate, 0.6-0.8 = dense, 0.8+ = lush
+          canopy_pct = max(0, min(100, round(ndvi_val * 100)))
+          if ndvi_val >= 0.6: canopy_dot = '🟢'
+          elif ndvi_val >= 0.4: canopy_dot = '🟡'
+          elif ndvi_val >= 0.2: canopy_dot = '🟠'
+          else: canopy_dot = '🔴'
+
+          delta = ndvi_val - ndvi_prev
+          if delta > 0.02: trend = '↑'
+          elif delta < -0.02: trend = '↓'
+          else: trend = '→'
+
+          # --- AQI ---
           aq_h = aq.get('hourly', {})
           aq_times = aq_h.get('time', [])
           aq_idx = 0
@@ -61,32 +90,10 @@ jobs:
               return (arr[min(idx, len(arr)-1)] if arr else 0) or 0
           us_aqi = safe(aq_h.get('us_aqi',[]), aq_idx)
           pm25 = safe(aq_h.get('pm2_5',[]), aq_idx)
-          pm10 = safe(aq_h.get('pm10',[]), aq_idx)
           humidity = safe(h.get('relative_humidity_2m',[]), hour_idx)
           wind = safe(h.get('wind_speed_10m',[]), hour_idx)
-          PM25_BP = [(0,9,0,50),(9.1,35.4,51,100),(35.5,55.4,101,150),(55.5,125.4,151,200),(125.5,225.4,201,300),(225.5,325.4,301,500)]
-          PM10_BP = [(0,54,0,50),(55,154,51,100),(155,254,101,150),(255,354,151,200),(355,424,201,300),(425,604,301,500)]
-          def epa(conc, bp):
-              for c_lo, c_hi, i_lo, i_hi in bp:
-                  if c_lo <= conc <= c_hi:
-                      return round(i_lo + (conc-c_lo)*(i_hi-i_lo)/(c_hi-c_lo))
-              return round(bp[-1][3])
-          pm25_adj = max(5, min(30, epa(pm25*1.5, PM25_BP) - epa(pm25, PM25_BP)))
-          pm10_adj = max(0, min(15, epa(pm10*1.3, PM10_BP) - epa(pm10, PM10_BP)))
-          humid_adj = min(20, round((humidity-85)*1.3)) if humidity > 85 else 0
-          if wind >= 15: wind_adj = -min(15, round((wind-10)*1.5))
-          elif wind < 3: wind_adj = 15
-          elif wind < 7: wind_adj = round(10-wind)
-          else: wind_adj = 0
-          aci = max(0, us_aqi + pm25_adj + pm10_adj + humid_adj + wind_adj)
-          if aci <= 50: aci_dot = '🟢'
-          elif aci <= 100: aci_dot = '🟡'
-          elif aci <= 150: aci_dot = '🟠'
-          elif aci <= 200: aci_dot = '🔴'
-          elif aci <= 300: aci_dot = '🟣'
-          else: aci_dot = '🟤'
 
-          # Line 1: hourly forecast + canopy indicator
+          # Line 1: hourly forecast + canopy from satellite
           parts = []
           for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
               dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
@@ -94,7 +101,7 @@ jobs:
               ic = icons.get(h['weather_code'][i], '?')
               parts.append(f'{hr}{ic}')
           hourly_line = ' '.join(parts)
-          print(f'{hourly_line}  🌳{aci_dot}{aci}')
+          print(f'{hourly_line}  🌳{canopy_dot}{trend}')
 
           # Lines 2-5: daily with spaced icons
           def day_icons(day_str):
@@ -113,17 +120,17 @@ jobs:
               hi_t = round(d['temperature_2m_max'][i])
               hourly = day_icons(d['time'][i])
               rain = d['precipitation_probability_max'][i] or 0
-              delta = hi_t - prev_hi
+              delta_t = hi_t - prev_hi
               alert = ''
-              if delta <= -5: alert = ' 🔻'
+              if delta_t <= -5: alert = ' 🔻'
               elif rain >= 50: alert = ' 🌊'
               print(f'{day} {hi_t:>2}° {hourly}{alert}')
               prev_hi = hi_t
 
-          # Line 6+: detailed breakdown (hidden from pinned preview)
+          # Lines below fold (hidden from pinned preview)
           print()
-          print(f'Canopy {aci} (AQI {us_aqi} + street {pm25_adj+pm10_adj} + hum {humid_adj} + wind {wind_adj})')
-          print(f'PM2.5 {round(pm25)} ug/m3 | Wind {round(wind)} mph | Humidity {round(humidity)}%')
-          " "$WEATHER_DATA" "$AQI_DATA")
+          print(f'🛰 NDVI {ndvi_val:.2f} ({ndvi_date}) {trend}')
+          print(f'AQI {us_aqi} | PM2.5 {round(pm25)} | Wind {round(wind)} | Hum {round(humidity)}%')
+          " "$WEATHER_DATA" "$AQI_DATA" "$NDVI_DATA")
 
           gh gist edit "$GIST_ID" -f "aircloudy" - <<< "$WEATHER"
