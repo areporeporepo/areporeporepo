@@ -11,10 +11,10 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 DATA_ROWS = 4
-WEEKS_PER_ROW = 5
+DAYS_PER_ROW = 20  # match bar width for visual alignment
 BAR_WIDTH = 20
 STALE_HOURS = 5
-LEVELS = {0: "·", 1: "░", 2: "█"}
+LEVELS = {0: "⬜", 1: "🟩", 2: "🟩"}
 CONTENT_FILENAME = "\u2800"
 PT = timezone(timedelta(hours=-8))
 
@@ -57,31 +57,27 @@ def usage_bar(pct):
     pct = max(0, min(100, pct))
     filled = round(pct / 100 * BAR_WIDTH)
     empty = BAR_WIDTH - filled
-    return f"{'🔵' * filled}{'⚪' * empty}"
+    return f"{'🟦' * filled}{'⬜' * empty}"
 
 
 def generate_grid(dates):
     counts = dict(Counter(dates))
     today = datetime.now(PT).date()
-    current_monday = today - timedelta(days=today.weekday())
-    total_weeks = DATA_ROWS * WEEKS_PER_ROW
-    start_monday = current_monday - timedelta(weeks=total_weeks - 1)
+    total_days = DATA_ROWS * DAYS_PER_ROW
+    start_date = today - timedelta(days=total_days - 1)
 
     lines = []
-    for row_start in range(0, total_weeks, WEEKS_PER_ROW):
-        row = ""
-        for w in range(row_start, row_start + WEEKS_PER_ROW):
-            if w > row_start:
-                row += " "
-            week_monday = start_monday + timedelta(weeks=w)
-            for day in range(7):
-                d = week_monday + timedelta(days=day)
-                if d > today:
-                    row += "·"
-                else:
-                    n = counts.get(d.strftime("%Y-%m-%d"), 0)
-                    row += LEVELS[min(n, 2)]
-        lines.append(row)
+    for row in range(DATA_ROWS):
+        cells = ""
+        for d in range(DAYS_PER_ROW):
+            day_idx = row * DAYS_PER_ROW + d
+            date = start_date + timedelta(days=day_idx)
+            if date > today:
+                cells += "⬜"
+            else:
+                n = counts.get(date.strftime("%Y-%m-%d"), 0)
+                cells += LEVELS[min(n, 2)]
+        lines.append(cells)
     lines.reverse()
     return "\n".join(lines)
 
