@@ -76,7 +76,7 @@ jobs:
           ndvi_num = f'{ndvi_val:.2f}'
           ndvi_str = f'🌳{canopy_dot}{ndvi_num}{trend}' if ndvi_val > 0 else '🌳--'
 
-          # --- AQI ---
+          # --- AQI + weather stats ---
           aq_h = aq.get('hourly', {})
           aq_times = aq_h.get('time', [])
           aq_idx = 0
@@ -97,7 +97,30 @@ jobs:
           sunset = d.get('sunset',[''])[0].split('T')[-1] if d.get('sunset') else ''
           uv_max = d.get('uv_index_max',[0])[0] or 0
 
-          # Line 1: hourly forecast + canopy
+          # --- Comfort Index (0-100) ---
+          comfort = 100.0
+          # Temperature: ideal feels-like 62-75F
+          if feels < 62: comfort -= min(30, (62 - feels) * 1.5)
+          elif feels > 75: comfort -= min(30, (feels - 75) * 2)
+          # Humidity: ideal 35-60%
+          if humidity < 35: comfort -= min(12, (35 - humidity) * 0.6)
+          elif humidity > 60: comfort -= min(15, (humidity - 60) * 0.5)
+          # Wind: ideal 2-12 mph
+          if wind > 12: comfort -= min(12, (wind - 12) * 1.2)
+          elif wind < 2: comfort -= 3
+          # AQI penalty
+          comfort -= min(25, us_aqi * 0.2)
+          # UV penalty (>6 is harsh)
+          if uv > 6: comfort -= min(10, (uv - 6) * 2)
+          # NDVI bonus: green surroundings boost comfort
+          if ndvi_val > 0: comfort += min(5, ndvi_val * 8)
+          comfort = max(0, min(100, round(comfort)))
+          if comfort >= 80: c_dot = '🟢'
+          elif comfort >= 60: c_dot = '🟡'
+          elif comfort >= 40: c_dot = '🟠'
+          else: c_dot = '🔴'
+
+          # Line 1: hourly forecast + comfort index
           parts = []
           for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
               dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
@@ -105,7 +128,7 @@ jobs:
               ic = icons.get(h['weather_code'][i], '?')
               parts.append(f'{hr}{ic}')
           hourly_line = ' '.join(parts)
-          print(f'{hourly_line}  {ndvi_str}')
+          print(f'{hourly_line}  🍃{c_dot}{comfort}')
 
           # Lines 2-5: daily with spaced icons
           def day_icons(day_str):
@@ -133,6 +156,14 @@ jobs:
 
           # Lines below fold (hidden from pinned preview)
           print()
+          print(f'🍃 Comfort {comfort}/100 {c_dot}')
+          t_pen = min(30, (62-feels)*1.5) if feels<62 else min(30,(feels-75)*2) if feels>75 else 0
+          h_pen = min(12,(35-humidity)*0.6) if humidity<35 else min(15,(humidity-60)*0.5) if humidity>60 else 0
+          w_pen = min(12,(wind-12)*1.2) if wind>12 else 3 if wind<2 else 0
+          a_pen = min(25, us_aqi*0.2)
+          u_pen = min(10,(uv-6)*2) if uv>6 else 0
+          n_bon = min(5, ndvi_val*8) if ndvi_val>0 else 0
+          print(f'  temp {-round(t_pen)} hum {-round(h_pen)} wind {-round(w_pen)} aqi {-round(a_pen)} uv {-round(u_pen)} ndvi +{round(n_bon)}')
           src = 'Sentinel-2 10m' if ndvi_val > 0 else 'MODIS'
           ndvi_chg = f'{delta:+.2f}' if ndvi_val > 0 else '--'
           print(f'🛰 NDVI {ndvi_num} ({ndvi_chg}) {trend} [{src}] {ndvi_date}')
