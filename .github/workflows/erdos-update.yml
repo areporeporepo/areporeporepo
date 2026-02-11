@@ -1,0 +1,28 @@
+name: Erdős Problems Tracker Update
+
+on:
+  schedule:
+    - cron: '0 */8 * * *'  # Every 8 hours (UTC)
+  workflow_dispatch:
+
+jobs:
+  update-erdos-gist:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: pip install pyyaml
+
+    - name: Run Erdős tracker
+      env:
+        GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+        ERDOS_GIST_ID: ${{ secrets.ERDOS_GIST_ID }}
+      run: python .github/scripts/erdos_tracker.py --ci
