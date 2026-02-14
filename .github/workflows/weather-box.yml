@@ -46,20 +46,21 @@ jobs:
           precip_icons = {
             45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
             61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'🌨',
-            80:'🌧',81:'🌧',82:'🌧',95:'⛈',96:'⛈',99:'⛈'
+            80:'🌧',81:'🌧',82:'🌧',95:'⛈\uFE0F',96:'⛈\uFE0F',99:'⛈\uFE0F'
           }
           def cloud_icon(pct):
-              if pct <= 10: return '☀'
+              if pct <= 10: return '☀\uFE0F'
               if pct <= 25: return '🌤'
-              if pct <= 50: return '⛅'
+              if pct <= 50: return '⛅\uFE0F'
               if pct <= 85: return '🌥'
-              return '☁'
+              return '☁\uFE0F'
 
-          wide_emoji = {'☀','☁','⛅','⛈'}
           def vw(s):
               w = 0
               for c in s:
-                  w += 2 if (ord(c) >= 0x1F300 or c in wide_emoji) else 1
+                  cp = ord(c)
+                  if cp == 0xFE0F: continue
+                  w += 2 if (cp >= 0x1F300 or cp in (0x2600,0x2601,0x26C5,0x26C8)) else 1
               return w
           def safe(arr, idx):
               return (arr[min(idx, len(arr)-1)] if arr else 0) or 0
@@ -94,7 +95,7 @@ jobs:
                   max_cover = max(amounts.get(l.get('amount',''), 50) for l in layers)
                   nws_icon = cloud_icon(max_cover)
               desc_l = nws_desc.lower()
-              if 'thunder' in desc_l or 'storm' in desc_l: nws_icon = '⛈'
+              if 'thunder' in desc_l or 'storm' in desc_l: nws_icon = '⛈\uFE0F'
               elif any(w in desc_l for w in ['rain','drizzle','shower']): nws_icon = '🌧'
               elif any(w in desc_l for w in ['snow','sleet','ice']): nws_icon = '🌨'
               elif 'fog' in desc_l or 'mist' in desc_l: nws_icon = '🌫'
