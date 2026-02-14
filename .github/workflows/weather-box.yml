@@ -55,13 +55,11 @@ jobs:
               if pct <= 85: return '🌥'
               return '☁'
 
-          narrow = {'☀','☁','⛅','⛈'}
-          def pad(ic):
-              return ic + ' ' if ic in narrow else ic
+          wide_emoji = {'☀','☁','⛅','⛈'}
           def vw(s):
               w = 0
               for c in s:
-                  w += 2 if ord(c) >= 0x1F300 else 1
+                  w += 2 if (ord(c) >= 0x1F300 or c in wide_emoji) else 1
               return w
           def safe(arr, idx):
               return (arr[min(idx, len(arr)-1)] if arr else 0) or 0
@@ -204,7 +202,7 @@ jobs:
               for j, t in enumerate(h['time']):
                   dt = datetime.strptime(t, '%Y-%m-%dT%H:%M')
                   if dt.strftime('%Y-%m-%d') == day_str and dt.hour in sample:
-                      r.append(pad(get_icon(j)))
+                      r.append(get_icon(j))
               return ' '.join(r)
 
           prev_hi = round(d['temperature_2m_max'][0])
