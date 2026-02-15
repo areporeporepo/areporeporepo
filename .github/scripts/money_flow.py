@@ -620,6 +620,17 @@ STYLE:
 - Use abbreviations that fit: cntgo, bkwrd, liq, HY, 10Y, insdr, formD
 - The explanation section is where you add real insight — what does this combination of signals mean?
 
+VISUAL AESTHETICS (review before submitting):
+- This renders in a MONOSPACE font on a dark GitHub profile card. Think terminal UI.
+- Lines should look visually balanced — similar lengths, not jagged/ragged right edges.
+- │ separators should create clean visual columns. Try to align them across lines.
+- Consistent spacing: if one line uses tight packing (no spaces around │), all should.
+- The 5 lines should read as a cohesive dashboard, not 5 independent strings.
+- Look at all 5 lines together and ask: does this look clean and intentional?
+- Avoid orphaned short segments at end of lines (e.g. "│ x" looks bad).
+- The explanation section should also look clean — each explanation is ONE line (no wrapping mid-sentence).
+- Aim for exactly 5 explanation lines (one per dashboard line), each ≤80 chars.
+
 OUTPUT: Only the gist content (5 dashboard lines + blank + explanations). Nothing else.\
 """
 
