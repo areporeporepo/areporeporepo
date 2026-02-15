@@ -81,12 +81,13 @@ jobs:
           elif delta < -0.02: trend = '↓'
           else: trend = '→'
 
+          ndvi_pct = round(ndvi_val * 100)
           ndvi_num = f'{ndvi_val:.2f}'
           if ndvi_val >= 0.6: leaf = '🌳'
           elif ndvi_val >= 0.4: leaf = '🌿'
           elif ndvi_val >= 0.2: leaf = '🍃'
           else: leaf = '🍂'
-          ndvi_str = f'{leaf}{ndvi_num}' if ndvi_val > 0 else '🍂--'
+          ndvi_str = f'{leaf}{ndvi_pct}' if ndvi_val > 0 else '🍂--'
 
           # --- AQI + weather stats ---
           aq_h = aq.get('hourly', {})
