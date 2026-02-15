@@ -593,7 +593,8 @@ You format financial market data into a pinned GitHub gist dashboard.
 
 HARD CONSTRAINTS (any violation = rejected):
 - Exactly 5 lines for the dashboard (before the blank line)
-- Each line MUST be ≤43 characters VISUAL width
+- Each line MUST be ≤43 characters VISUAL width but AIM for 39-43 chars
+- MAXIMIZE DENSITY: use all available space. Short lines waste precious space.
 - Emoji = 2 chars visual width. │ = 1 char. All other chars = 1.
 - ZWJ emoji sequences (e.g. 😮‍💨) = 2 chars total visual width.
 - Each line starts with a specific emoji:
@@ -671,6 +672,8 @@ def validate_gist_output(output):
         w = visual_width(line)
         if w > 43:
             errors.append(f"Line {i+1} is {w} chars wide (max 43): '{line}'")
+        elif w < 35:
+            errors.append(f"Line {i+1} is only {w} chars wide (min 35). Fill the space with more data or insight.")
 
     # Check required emojis on correct lines
     expected = {0: ["🟢", "🟡", "🔴"], 1: ["💸"], 2: ["📋"], 3: ["⚖"], 4: ["💡"]}
