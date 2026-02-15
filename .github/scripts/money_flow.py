@@ -683,8 +683,8 @@ def validate_gist_output(output):
         w = visual_width(line)
         if w > 43:
             errors.append(f"Line {i+1} is {w} chars wide (max 43): '{line}'")
-        elif w < 35:
-            errors.append(f"Line {i+1} is only {w} chars wide (min 35). Fill the space with more data or insight.")
+        elif w < 39:
+            errors.append(f"Line {i+1} is only {w}/43 chars. You have {43-w} more chars to fill — add more data or context.")
 
     # Check required emojis on correct lines
     expected = {0: ["🟢", "🟡", "🔴"], 1: ["💸"], 2: ["📋"], 3: ["⚖"], 4: ["💡"]}
@@ -762,18 +762,31 @@ Rewrite this dashboard. Rules:
             output = output.strip()
 
             errors = validate_gist_output(output)
+
+            # Always compute widths for feedback
+            dash_lines = []
+            for ln in output.split("\n"):
+                if ln.strip() == "":
+                    break
+                dash_lines.append(ln)
+            widths = [f"  L{i+1}: {visual_width(l)}/43 chars" for i, l in enumerate(dash_lines)]
+            width_report = "\n".join(widths)
+
             if not errors:
                 print(f"✓ Agent produced valid output on attempt {attempt + 1}")
+                print(width_report)
                 return output
 
-            # Feed errors back for refinement
+            # Feed errors + width report back for refinement
             error_msg = "\n".join(errors)
             print(f"  Agent attempt {attempt + 1}: {len(errors)} error(s)")
             messages.append({"role": "assistant", "content": output})
             messages.append({"role": "user", "content": (
                 f"Formatting errors found:\n{error_msg}\n\n"
-                "Fix these errors. Each dashboard line must be ≤43 visual chars "
-                "(emoji=2, │=1, others=1). Output ONLY the corrected gist content."
+                f"Current line widths:\n{width_report}\n\n"
+                "Fix these errors. Fill ALL lines to 39-43 visual chars. "
+                "Each emoji=2 chars, │=1 char, all others=1. "
+                "Output ONLY the corrected gist content."
             )})
 
         except Exception as e:
