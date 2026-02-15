@@ -46,6 +46,14 @@ jobs:
           narrow = {'☀','☁','⛅','⛈'}
           def pad(ic):
               return ic + ' ' if ic in narrow else ic
+          def moon_phase(date_str):
+              dt = datetime.strptime(date_str, '%Y-%m-%d')
+              ref = datetime(2000, 1, 6, 18, 14)
+              age = ((dt - ref).total_seconds() / 86400) % 29.530588853
+              if age < 1 or age > 28.53: return '🌑'
+              if 13.27 < age < 15.27: return '🌕'
+              return ''
+
           days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
           d = weather['daily']
@@ -141,6 +149,7 @@ jobs:
               return ' '.join(r)
 
           prev_hi = round(d['temperature_2m_max'][0])
+          shown_moon = set()
           for i in range(1, 5):
               dt = datetime.strptime(d['time'][i], '%Y-%m-%d')
               day = days[dt.weekday()]
@@ -148,8 +157,12 @@ jobs:
               hourly = day_icons(d['time'][i])
               rain = d['precipitation_probability_max'][i] or 0
               delta_t = hi_t - prev_hi
+              moon = moon_phase(d['time'][i])
               alert = ''
-              if delta_t <= -5: alert = ' 🔻'
+              if moon and moon not in shown_moon:
+                  alert = ' ' + moon
+                  shown_moon.add(moon)
+              elif delta_t <= -5: alert = ' 🔻'
               elif rain >= 50: alert = ' 🌊'
               print(f'{day} {hi_t:>2}° {hourly}{alert}')
               prev_hi = hi_t
