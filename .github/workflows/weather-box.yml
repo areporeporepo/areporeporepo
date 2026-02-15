@@ -154,10 +154,10 @@ jobs:
               ss = d.get('sunset',[])[i] if i < len(d.get('sunset',[])) else None
               if sr:
                   sr_dt = datetime.strptime(sr, '%Y-%m-%dT%H:%M')
-                  sun_events[sr_dt.strftime('%Y-%m-%d-%H')] = ('🌅', sr_dt)
+                  sun_events[sr_dt.strftime('%Y-%m-%d-%H')] = ('sunrise', sr_dt)
               if ss:
                   ss_dt = datetime.strptime(ss, '%Y-%m-%dT%H:%M')
-                  sun_events[ss_dt.strftime('%Y-%m-%d-%H')] = ('🌇', ss_dt)
+                  sun_events[ss_dt.strftime('%Y-%m-%d-%H')] = ('sunset', ss_dt)
 
           # Line 1: hourly forecast + NDVI
           parts = []
@@ -183,10 +183,16 @@ jobs:
               # Check if a sun event falls in this hour
               key = dt.strftime('%Y-%m-%d-%H')
               if key in sun_events:
-                  ev_icon, ev_dt = sun_events[key]
+                  ev_type, ev_dt = sun_events[key]
                   ev_hr = ev_dt.strftime('%I:%M%p').lstrip('0').rstrip('M').lower()
-                  wc = h['weather_code'][i]
-                  ic = icons.get(wc, '?')
+                  if ev_type == 'sunset':
+                      wc = h['weather_code'][i]
+                      if wc in night_clear:
+                          ic = moon_icon(dt)
+                      else:
+                          ic = '🌫'
+                  else:  # sunrise - show daytime weather
+                      ic = icons.get(h['weather_code'][i], '?')
                   parts.append(f'{ev_hr}{ic}')
               else:
                   hr = dt.strftime('%I%p').lstrip('0').rstrip('M').lower()
