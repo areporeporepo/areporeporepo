@@ -1,0 +1,23 @@
+name: Life Tracker Update
+
+on:
+  schedule:
+    - cron: '59 * * * *'  # Every hour at :59
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Update life tracker gist
+      env:
+        GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+        LIFE_GIST_ID: ${{ secrets.LIFE_GIST_ID }}
+        LIFE_DATA_GIST_ID: ${{ secrets.LIFE_DATA_GIST_ID }}
+      run: python3 .github/scripts/life_tracker.py
