@@ -64,6 +64,18 @@ def yahoo(sym, rng="12d"):
     return price, closes
 
 
+# Consistent 3-column layout for all lines
+# Col1: 14 chars, Col2: 13 chars, Col3: rest
+# Total: emoji(2) + space(1) + 14 + "│ "(2) + 13 + "│ "(2) + ~8 = ~42
+W1, W2 = 14, 13
+
+def fmt3(emoji, c1, c2, c3):
+    return f"{emoji} {c1:<{W1}}│ {c2:<{W2}}│ {c3}"
+
+def fmt2(emoji, c1, c2):
+    return f"{emoji} {c1:<{W1 + 2 + W2}}│ {c2}"
+
+
 def safe_5d(closes):
     """5-day return, handling short arrays."""
     if len(closes) < 6:
@@ -123,7 +135,7 @@ def build_line1():
                       f"?series_id=BAMLH0A0HYM2&api_key={FRED_KEY}"
                       f"&file_type=json&sort_order=desc&limit=1")
             spread = float(d["observations"][0]["value"])
-            credit = f"HY+{int(spread * 100)}"
+            credit = f"HY{int(spread * 100)}"
             status = "healthy" if spread < 4.0 else "elevated" if spread < 5.5 else "stressed"
             expl[-1] = f"credit {status} ({spread:.1f}%)"
             info["credit"] = credit
@@ -165,15 +177,16 @@ def build_line1():
     else:
         dot = "⚪"
 
-    # Build line with consistent format
-    segs = [f"VIX {vix:.0f}" if vix else "VIX ?", struct]
+    # Build line with consistent column layout
+    c1 = f"VIX {vix:.0f} {struct}" if vix else "VIX ?"
+    c2parts = []
     if credit:
-        segs.append(credit)
+        c2parts.append(credit)
     if "m2" in info:
-        segs.append(info["m2"])
-    if tny:
-        segs.append(f"10Y{tny:.1f}")
-    line = f"{dot} " + " │ ".join(segs)
+        c2parts.append(info["m2"])
+    c2 = " ".join(c2parts)
+    c3 = f"10Y {tny:.1f}" if tny else ""
+    line = fmt3(dot, c1, c2, c3)
 
     # Rich explanation: thresholds + context
     ex = []
@@ -234,16 +247,19 @@ def build_line2():
 
     parts = []
     for lbl, rel in show:
-        bars = min(int(abs(rel) * 1.5), 6)
+        bars = min(int(abs(rel) * 1.5), 5)
         b = "▓" * bars + "░" * max(0, 5 - bars)
         if rel > 0.5:
             parts.append(f"▶{lbl}{b}")
         elif rel < -0.5:
             parts.append(f"◁{lbl}{b}")
         else:
-            parts.append(f"→{lbl}")
+            parts.append(f"→{lbl}{b}")
 
-    line = "💸 " + "  ".join(parts)
+    # Use consistent 3-column layout
+    while len(parts) < 3:
+        parts.append("—")
+    line = fmt3("💸", parts[0], parts[1], parts[2])
 
     # Rich explanation: actual percentages + context
     all_flow_strs = []
@@ -299,7 +315,10 @@ def build_line3():
     except Exception:
         pass
 
-    line = f"📋 insdr {insider_str} │ formD {form_d_count} AI/{form_d_total} wk"
+    c1 = f"insdr {insider_str}"
+    c2 = f"formD {form_d_count} AI"
+    c3 = f"{form_d_total} total wk"
+    line = fmt3("📋", c1, c2, c3)
 
     # Rich explanation
     ex = []
@@ -360,19 +379,19 @@ def build_line4():
             raw = event_title.split("?")[0].split("...")[0].strip()
             rl = raw.lower()
             if "fed chair" in rl or ("nominate" in rl and "fed" in rl):
-                short = "Fed Chair"
+                short = "FedCh"
             elif "strike" in rl and "iran" in rl:
-                short = "Iran strk"
+                short = "Iran"
             elif ("fed" in rl or "fomc" in rl) and ("rate" in rl or "decision" in rl or "interest" in rl or "decrease" in rl):
-                short = "rate cut"
+                short = "RateCut"
             elif "recession" in rl:
-                short = "recession"
+                short = "Recsn"
             elif "tariff" in rl:
-                short = "tariff"
+                short = "Tarif"
             elif "inflation" in rl:
-                short = "inflation"
+                short = "Infln"
             elif "war" in rl or "conflict" in rl:
-                short = "conflict"
+                short = "War"
             else:
                 for rm in ["Will ", "the ", "Trump ", "United States ",
                             "How many ", "What will ", "Who will "]:
@@ -391,9 +410,11 @@ def build_line4():
         pass
 
     if markets:
-        line = "⚖ " + " │ ".join(m["short"] for m in markets[:3])
+        while len(markets) < 3:
+            markets.append({"short": "—", "full": "", "prob": 0})
+        line = fmt3("⚖", markets[0]["short"], markets[1]["short"], markets[2]["short"])
     else:
-        line = "⚖ polymarket unavail"
+        line = fmt2("⚖", "polymarket unavail", "—")
 
     # Rich explanation: fuller question text + probabilities
     if markets:
@@ -492,8 +513,8 @@ def build_line5(info):
     if info.get("credit") and "↑" in info.get("credit", ""):
         reasons.append("HY ok")
 
-    reason_str = " ".join(reasons[:4]) if reasons else "mixed signals"
-    line = f"💡 {reason_str} │ {signal}"
+    reason_str = " ".join(reasons[:4]) if reasons else "mixed"
+    line = fmt2("💡", reason_str, signal)
 
     # Rich explanation: score breakdown
     breakdown = []
