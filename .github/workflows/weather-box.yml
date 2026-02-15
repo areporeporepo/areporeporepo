@@ -136,7 +136,7 @@ jobs:
               ic = icons.get(h['weather_code'][i], '?')
               parts.append(f'{hr}{ic}')
           hourly_line = ' '.join(parts)
-          print(f'{hourly_line}  🍃{c_dot}{comfort}')
+          print(f'{hourly_line}  {ndvi_str}')
 
           # Lines 2-5: daily with spaced icons
           def day_icons(day_str):
