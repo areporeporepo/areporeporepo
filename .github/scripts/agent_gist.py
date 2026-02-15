@@ -15,10 +15,37 @@ STANFORD_LON = -122.1697
 
 CONTENT_GIST_ID = os.environ["AGENT_GIST_ID"]
 DATA_GIST_ID = os.environ["AGENT_DATA_GIST_ID"]
-ACCESS_TOKEN = os.environ["ANTHROPIC_ACCESS_TOKEN"]
+REFRESH_TOKEN = os.environ["ANTHROPIC_REFRESH_TOKEN"]
+OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 MODEL = "claude-sonnet-4-5-20250929"
 
 MAX_MEMORY_ENTRIES = 30
+
+
+def refresh_access_token():
+    """Exchange refresh token for a fresh access token."""
+    payload = json.dumps({
+        "grant_type": "refresh_token",
+        "refresh_token": REFRESH_TOKEN,
+        "client_id": OAUTH_CLIENT_ID,
+    }).encode()
+    req = urllib.request.Request(
+        "https://console.anthropic.com/v1/oauth/token",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "claude-code/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        return data["access_token"]
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if e.fp else ""
+        print(f"Token refresh HTTP {e.code}: {body}", file=sys.stderr)
+        raise
 
 
 def get_weather():
@@ -175,7 +202,13 @@ Generate your 5 lines now. Remember: each line ≤ 41 chars, exactly 5 lines, no
 def main():
     now = datetime.now(PACIFIC)
 
-    access_token = ACCESS_TOKEN
+    print("Refreshing access token...", file=sys.stderr)
+    try:
+        access_token = refresh_access_token()
+        print("Token refreshed.", file=sys.stderr)
+    except Exception as e:
+        print(f"Token refresh failed: {e}", file=sys.stderr)
+        sys.exit(1)
 
     weather = get_weather()
     memory = get_memory()

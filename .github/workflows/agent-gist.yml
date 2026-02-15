@@ -17,5 +17,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
           AGENT_GIST_ID: ${{ secrets.AGENT_GIST_ID }}
           AGENT_DATA_GIST_ID: ${{ secrets.AGENT_DATA_GIST_ID }}
-          ANTHROPIC_ACCESS_TOKEN: ${{ secrets.ANTHROPIC_ACCESS_TOKEN }}
+          ANTHROPIC_REFRESH_TOKEN: ${{ secrets.ANTHROPIC_REFRESH_TOKEN }}
         run: python .github/scripts/agent_gist.py
