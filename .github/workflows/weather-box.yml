@@ -46,13 +46,15 @@ jobs:
           narrow = {'☀','☁','⛅','⛈'}
           def pad(ic):
               return ic + ' ' if ic in narrow else ic
-          def moon_phase(date_str):
-              dt = datetime.strptime(date_str, '%Y-%m-%d')
+          def moon_icon(date_str):
+              dt = datetime.strptime(date_str, '%Y-%m-%d') if isinstance(date_str, str) else date_str
               ref = datetime(2000, 1, 6, 18, 14)
               age = ((dt - ref).total_seconds() / 86400) % 29.530588853
-              if age < 1 or age > 28.53: return '🌑'
-              if 13.27 < age < 15.27: return '🌕'
-              return ''
+              phases = ['🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘']
+              return phases[int((age / 29.530588853) * 8) % 8]
+          def moon_phase(date_str):
+              m = moon_icon(date_str)
+              return m if m in ('🌑','🌕') else ''
 
           days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
@@ -136,12 +138,25 @@ jobs:
           elif comfort >= 40: c_dot = '🟠'
           else: c_dot = '🔴'
 
-          # Line 1: hourly forecast + comfort index
+          # Parse today's sunset for night detection
+          sunset_hour = int(sunset.split(':')[0]) if sunset else 20
+          sunset_min = int(sunset.split(':')[1]) if sunset else 0
+          night_clear = {0,1,2}    # clear/partly cloudy - can see moon
+          night_overcast = {3,45,48}  # overcast/fog - can't see moon
+
+          # Line 1: hourly forecast + NDVI
           parts = []
           for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
               dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
               hr = dt.strftime('%I%p').lstrip('0').rstrip('M').lower()
-              ic = icons.get(h['weather_code'][i], '?')
+              wc = h['weather_code'][i]
+              is_night = dt.hour > sunset_hour or (dt.hour == sunset_hour and dt.minute >= sunset_min)
+              if is_night and wc in night_clear:
+                  ic = moon_icon(dt)
+              elif is_night and wc in night_overcast:
+                  ic = '🌫'
+              else:
+                  ic = icons.get(wc, '?')
               parts.append(f'{hr}{ic}')
           hourly_line = ' '.join(parts)
           print(f'{hourly_line}  {ndvi_str}')
@@ -153,7 +168,13 @@ jobs:
               for j, t in enumerate(h['time']):
                   dt = datetime.strptime(t, '%Y-%m-%dT%H:%M')
                   if dt.strftime('%Y-%m-%d') == day_str and dt.hour in sample:
-                      r.append(pad(icons.get(h['weather_code'][j], '☁')))
+                      wc = h['weather_code'][j]
+                      if dt.hour >= sunset_hour and wc in night_clear:
+                          r.append(pad(moon_icon(dt)))
+                      elif dt.hour >= sunset_hour and wc in night_overcast:
+                          r.append(pad('🌫'))
+                      else:
+                          r.append(pad(icons.get(wc, '☁')))
               return ' '.join(r)
 
           prev_hi = round(d['temperature_2m_max'][0])
