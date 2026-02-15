@@ -82,7 +82,7 @@ jobs:
           else: trend = '→'
 
           ndvi_num = f'{ndvi_val:.2f}'
-          ndvi_str = f'🌳{canopy_dot}{ndvi_num}{trend}' if ndvi_val > 0 else '🌳--'
+          ndvi_str = f'🌳{ndvi_num}' if ndvi_val > 0 else '🌳--'
 
           # --- AQI + weather stats ---
           aq_h = aq.get('hourly', {})
