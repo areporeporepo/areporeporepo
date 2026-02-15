@@ -83,10 +83,13 @@ jobs:
 
           ndvi_pct = round(ndvi_val * 100)
           ndvi_num = f'{ndvi_val:.2f}'
-          if ndvi_val >= 0.6: leaf = '🌳'
-          elif ndvi_val >= 0.4: leaf = '🌿'
-          elif ndvi_val >= 0.2: leaf = '🍃'
-          else: leaf = '🍂'
+          if ndvi_val >= 0.9: leaf = '🌴'
+          elif ndvi_val >= 0.75: leaf = '🌲'
+          elif ndvi_val >= 0.6: leaf = '🌳'
+          elif ndvi_val >= 0.45: leaf = '🌿'
+          elif ndvi_val >= 0.3: leaf = '🌱'
+          elif ndvi_val >= 0.15: leaf = '🍂'
+          else: leaf = '🏜'
           ndvi_str = f'{leaf}{ndvi_pct}' if ndvi_val > 0 else '🍂--'
 
           # --- AQI + weather stats ---
