@@ -16,8 +16,8 @@
   ],
   "author": "anhsrepo",
   "license": "MIT",
-  "dependencies": {},
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "vercel": "^33.0.0"
   }
 }
