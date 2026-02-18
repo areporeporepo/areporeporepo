@@ -23,9 +23,9 @@ GRID_LON_MAX = -121.95
 GRID_ROWS = 6
 GRID_COLS = 6
 
-# Home location
-HOME_LAT = 37.44783
-HOME_LON = -122.13604
+# General Palo Alto center (not exact home)
+HOME_LAT = 37.4419
+HOME_LON = -122.1430
 
 # Weather stations (METAR)
 STATIONS = [
@@ -198,7 +198,7 @@ def build_geojson(grid_data, conditions):
             "marker-color": "#ff4444",
             "marker-size": "large",
             "marker-symbol": "star",
-            "title": f"Home - {temp}F",
+            "title": f"Palo Alto - {temp}F",
             "description": f"Cloud {cc_home}% / Wind {wind} mph / ECMWF IFS"
         }
     })
