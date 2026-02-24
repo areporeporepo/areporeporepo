@@ -44,6 +44,7 @@ def read_data():
         "meat": {"entries": [], "goal_date": None, "goal_label": None},
         "zone5": {"sessions": [], "total_days": 0, "total_cal": 0, "goal": 365},
         "sanity": {"check1": False, "check2": False, "last_run": None},
+        "cold_shower": {"dates": []},
     }
 
 
@@ -77,12 +78,7 @@ def zone5_line(data):
             check -= timedelta(days=1)
         else:
             break
-    total_cal = z.get("total_cal", 0)
-    last = ""
-    if session_dates:
-        last_dt = datetime.strptime(session_dates[0], "%Y-%m-%d")
-        last = f" 📅{last_dt.strftime('%b%d').lstrip('0')}"
-    return f"😮\u200d💨 {total}/{goal} 🔥{streak} ⚡{total_cal}{last}"
+    return f"😮\u200d💨 {total}/{goal} 🔥{streak}"
 
 
 def sanity_line(data):
@@ -110,7 +106,27 @@ def meat_line(data):
         days_clean = (today - last_date).days
     else:
         days_clean = 0
+    import random
+    quips = {
+        range(0, 3): ["🐣 baby steps", "🍼 just started"],
+        range(3, 7): ["🐔 cluckin along", "🥬 leaf me alone"],
+        range(7, 14): ["🐄 safe for 1wk", "🌱 turning green"],
+        range(14, 21): ["🦬 could eat one rn", "🥦 veggie warrior"],
+        range(21, 30): ["🏔️ beast mode", "🐃 shaking rn"],
+        range(30, 60): ["🦁 apex herbivore", "🌿 photosynthesis soon"],
+        range(60, 90): ["🧘 transcended", "🐄 worship me now"],
+        range(90, 180): ["🌳 became a tree", "🐃 sleep safe tonight"],
+        range(180, 366): ["👽 post-human", "🏛️ meat is a myth"],
+    }
+    quip = ""
+    for r, opts in quips.items():
+        if days_clean in r:
+            random.seed(days_clean)
+            quip = random.choice(opts)
+            break
     line = f"🥩 {days_clean}d clean"
+    if quip:
+        line += f" · {quip}"
     goal_date = m.get("goal_date")
     goal_label = m.get("goal_label", "")
     if goal_date:
@@ -123,6 +139,21 @@ def meat_line(data):
         else:
             line += f" {moon} ✅ {dt_str}"
     return line
+
+
+def cold_shower_line(data):
+    cs = data.get("cold_shower", {})
+    dates = sorted(set(cs.get("dates", [])), reverse=True)
+    today = datetime.now(PT).date()
+    streak = 0
+    check = today
+    for d in dates:
+        if d == check.strftime("%Y-%m-%d"):
+            streak += 1
+            check -= timedelta(days=1)
+        else:
+            break
+    return f"🥶 {streak}d streak ❄️ coldest tap only"
 
 
 def cc_bar(data):
@@ -181,13 +212,13 @@ def main():
     line1 = zone5_line(data)
     line2 = sanity_line(data)
     line3 = meat_line(data)
-    line4 = cc_bar(data)
+    line4 = cold_shower_line(data)
+    line5 = cc_bar(data)
     timestamp = now.strftime("Updated %b %d %-I:%M%p PST").replace("AM", "am").replace("PM", "pm")
-    line5 = timestamp
 
     preview = f"{line1}\n{line2}\n{line3}\n{line4}\n{line5}"
     grid = cc_grid(data)
-    content = f"{preview}\n{grid}"
+    content = f"{preview}\n{timestamp}\n{grid}"
 
     write_data(data)
     write_content(content)
