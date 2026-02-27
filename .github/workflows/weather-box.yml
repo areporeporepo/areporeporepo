@@ -14,6 +14,14 @@ jobs:
       - name: Install Earth Engine API
         run: pip install earthengine-api
 
+      - name: Read Earth-2 Atlas forecast
+        env:
+          GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+          FORECAST_GIST_ID: ${{ secrets.FORECAST_GIST_ID }}
+        run: |
+          E2_DATA=$(python3 .github/scripts/earth2_forecast.py 2>/dev/null || echo '{}')
+          echo "E2_DATA=$E2_DATA" >> $GITHUB_ENV
+
       - name: Fetch weather and update gist
         env:
           GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
