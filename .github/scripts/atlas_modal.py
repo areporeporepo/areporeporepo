@@ -40,7 +40,9 @@ PA_LAT = 37.4478
 PA_LON = -122.1360  # earth2studio uses 0-360 → 237.864
 
 # Variables to extract at Palo Alto grid point
-EXTRACT_VARS = ["t2m", "u10m", "v10m", "msl", "tcwv", "sp"]
+# Surface + upper-level humidity/temp for cloud cover estimation
+EXTRACT_VARS = ["t2m", "u10m", "v10m", "msl", "tcwv", "sp", "tp"]
+CLOUD_VARS = ["q850", "q700", "q500", "t850", "t700", "t500"]
 
 # Data gist for forecast cache (set via modal secret or env)
 FORECAST_GIST_ID = os.environ.get("FORECAST_GIST_ID", "")
@@ -56,6 +58,83 @@ def ms_to_mph(ms: float) -> float:
 
 def pa_to_inhg(pa: float) -> float:
     return round(pa / 3386.39, 2)
+
+
+def specific_to_relative_humidity(q, t_kelvin, p_hpa):
+    """Convert specific humidity (kg/kg) to relative humidity (0-100%).
+
+    Uses Tetens formula for saturation vapor pressure.
+    q: specific humidity (kg/kg)
+    t_kelvin: temperature (K)
+    p_hpa: pressure level (hPa)
+    """
+    import math
+
+    t_c = t_kelvin - 273.15
+    # Saturation vapor pressure (hPa) via Tetens
+    es = 6.112 * math.exp(17.67 * t_c / (t_c + 243.5))
+    # Mixing ratio from specific humidity
+    w = q / (1 - q) if q < 1 else q
+    # Saturation mixing ratio
+    ws = 0.622 * es / (p_hpa - es) if p_hpa > es else 1.0
+    # Relative humidity
+    rh = (w / ws) * 100 if ws > 0 else 0
+    return max(0, min(100, rh))
+
+
+def estimate_cloud_cover(rh_850, rh_700, rh_500, tcwv):
+    """Estimate cloud fraction (0-100) from multi-level relative humidity + tcwv.
+
+    Based on Sundqvist (1989) cloud parameterization used in NWP models:
+    cloud_fraction = 1 - sqrt((1 - RH) / (1 - RH_crit))
+    where RH_crit varies by level (~0.7 for low, ~0.6 for mid, ~0.5 for high).
+    """
+    import math
+
+    def sundqvist_cf(rh_pct, rh_crit):
+        rh = rh_pct / 100
+        if rh <= rh_crit:
+            return 0.0
+        if rh >= 1.0:
+            return 1.0
+        return 1.0 - math.sqrt(max(0, (1 - rh) / (1 - rh_crit)))
+
+    # Cloud fraction at each level
+    cf_low = sundqvist_cf(rh_850, 0.70) if rh_850 is not None else 0
+    cf_mid = sundqvist_cf(rh_700, 0.60) if rh_700 is not None else 0
+    cf_high = sundqvist_cf(rh_500, 0.50) if rh_500 is not None else 0
+
+    # Total cloud cover: maximum-random overlap
+    # Simplified: use max overlap (conservative estimate)
+    total_cf = 1 - (1 - cf_low) * (1 - cf_mid) * (1 - cf_high)
+
+    # Adjust with tcwv as sanity check
+    # Very low tcwv (<8 kg/m2) → cap cloud cover
+    if tcwv is not None and tcwv < 8:
+        total_cf = min(total_cf, 0.2)
+
+    return round(total_cf * 100, 1)
+
+
+def cloud_cover_to_weather_code(cloud_pct, tp=None):
+    """Convert cloud cover % + precipitation to WMO weather code."""
+    # Check precipitation first (tp in kg/m2 per 6h step)
+    if tp is not None and tp > 1.0:
+        if tp > 10:
+            return 65  # heavy rain
+        if tp > 3:
+            return 63  # moderate rain
+        return 61      # slight rain
+
+    if cloud_pct < 10:
+        return 0   # clear
+    if cloud_pct < 30:
+        return 1   # mainly clear
+    if cloud_pct < 60:
+        return 2   # partly cloudy
+    if cloud_pct < 85:
+        return 3   # overcast
+    return 3       # overcast
 
 
 def extract_palo_alto(io_backend) -> list[dict]:
@@ -75,17 +154,16 @@ def extract_palo_alto(io_backend) -> list[dict]:
     actual_lon = float(lons[lon_idx])
 
     forecasts = []
-    # io_backend shape: [batch, lead_time, variable, lat, lon]
-    # lead_time steps are 0..nsteps, each 6h apart
-    t2m_data = io_backend["t2m"][0, :, lat_idx, lon_idx] if "t2m" in io_backend else None
 
     # Get number of time steps from any variable
-    for var in EXTRACT_VARS:
+    all_vars = EXTRACT_VARS + CLOUD_VARS
+    nsteps = None
+    for var in all_vars:
         if var in io_backend:
             nsteps = io_backend[var].shape[1]
             break
-    else:
-        return []
+    if nsteps is None:
+        return [], 0, 0
 
     for step in range(nsteps):
         lead_hours = step * 6
@@ -95,6 +173,33 @@ def extract_palo_alto(io_backend) -> list[dict]:
             if var in io_backend:
                 val = float(io_backend[var][0, step, lat_idx, lon_idx])
                 entry[var] = val
+
+        # Extract cloud variables
+        cloud_data = {}
+        for var in CLOUD_VARS:
+            if var in io_backend:
+                cloud_data[var] = float(io_backend[var][0, step, lat_idx, lon_idx])
+
+        # Compute relative humidity at each pressure level
+        rh_850, rh_700, rh_500 = None, None, None
+        if "q850" in cloud_data and "t850" in cloud_data:
+            rh_850 = specific_to_relative_humidity(cloud_data["q850"], cloud_data["t850"], 850)
+        if "q700" in cloud_data and "t700" in cloud_data:
+            rh_700 = specific_to_relative_humidity(cloud_data["q700"], cloud_data["t700"], 700)
+        if "q500" in cloud_data and "t500" in cloud_data:
+            rh_500 = specific_to_relative_humidity(cloud_data["q500"], cloud_data["t500"], 500)
+
+        # Estimate cloud cover
+        tcwv = entry.get("tcwv")
+        cloud_pct = estimate_cloud_cover(rh_850, rh_700, rh_500, tcwv)
+        tp = entry.get("tp")
+        weather_code = cloud_cover_to_weather_code(cloud_pct, tp)
+
+        entry["rh_850"] = round(rh_850, 1) if rh_850 is not None else None
+        entry["rh_700"] = round(rh_700, 1) if rh_700 is not None else None
+        entry["rh_500"] = round(rh_500, 1) if rh_500 is not None else None
+        entry["cloud_pct"] = cloud_pct
+        entry["weather_code"] = weather_code
 
         # Derived fields
         if "t2m" in entry:
@@ -128,6 +233,8 @@ def aggregate_daily(forecasts: list[dict], init_time: str) -> list[dict]:
                 "temps_f": [],
                 "winds_mph": [],
                 "pressures": [],
+                "cloud_pcts": [],
+                "weather_codes": [],
             }
 
         if "temp_f" in entry:
@@ -136,6 +243,10 @@ def aggregate_daily(forecasts: list[dict], init_time: str) -> list[dict]:
             daily[day_key]["winds_mph"].append(entry["wind_mph"])
         if "pressure_inhg" in entry:
             daily[day_key]["pressures"].append(entry["pressure_inhg"])
+        if "cloud_pct" in entry:
+            daily[day_key]["cloud_pcts"].append(entry["cloud_pct"])
+        if "weather_code" in entry:
+            daily[day_key]["weather_codes"].append(entry["weather_code"])
 
     result = []
     for day_key in sorted(daily.keys()):
@@ -143,6 +254,9 @@ def aggregate_daily(forecasts: list[dict], init_time: str) -> list[dict]:
         temps = d["temps_f"]
         winds = d["winds_mph"]
         pressures = d["pressures"]
+        clouds = d["cloud_pcts"]
+        codes = d["weather_codes"]
+        avg_cloud = round(sum(clouds) / len(clouds), 1) if clouds else None
         result.append(
             {
                 "date": d["date"],
@@ -154,6 +268,8 @@ def aggregate_daily(forecasts: list[dict], init_time: str) -> list[dict]:
                 "pressure_avg_inhg": (
                     round(sum(pressures) / len(pressures), 2) if pressures else None
                 ),
+                "cloud_avg_pct": avg_cloud,
+                "weather_code": cloud_cover_to_weather_code(avg_cloud) if avg_cloud is not None else 2,
             }
         )
 

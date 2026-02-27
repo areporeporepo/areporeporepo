@@ -2,7 +2,7 @@
 Earth-2 Atlas Forecast Reader for GitHub Actions
 
 Reads cached Atlas forecast JSON from data gist.
-Returns prediction for today + tomorrow to be displayed in weather gist.
+Returns full forecast data (daily + 6-hourly with cloud cover) for weather gist.
 No GPU needed — just reads pre-computed data.
 
 Usage:
@@ -39,79 +39,38 @@ def read_forecast_gist() -> dict:
         return {}
 
 
-def get_forecast_for_dates(forecast: dict) -> dict:
-    """Extract today and tomorrow's forecast from cached data."""
-    if not forecast or "daily" not in forecast:
+def build_output(forecast: dict) -> dict:
+    """Build output for weather-box workflow."""
+    if not forecast:
         return {}
 
-    now = datetime.now()
-    today = now.strftime("%Y-%m-%d")
-    tomorrow = (now.replace(hour=0) + __import__("datetime").timedelta(days=1)).strftime(
-        "%Y-%m-%d"
-    )
-
-    daily = {d["date"]: d for d in forecast.get("daily", [])}
-
-    result = {
-        "model": forecast.get("model", "atlas-crps"),
-        "init_time": forecast.get("init_time", ""),
-        "generated_at": forecast.get("generated_at", ""),
-    }
-
-    if today in daily:
-        result["today"] = daily[today]
-    if tomorrow in daily:
-        result["tomorrow"] = daily[tomorrow]
-
-    # Check staleness — forecast older than 12h is stale
     gen = forecast.get("generated_at", "")
+    age_hours = None
+    stale = True
     if gen:
         try:
             gen_dt = datetime.fromisoformat(gen.replace("Z", "+00:00"))
             age_hours = (datetime.now(gen_dt.tzinfo) - gen_dt).total_seconds() / 3600
-            result["age_hours"] = round(age_hours, 1)
-            result["stale"] = age_hours > 12
+            stale = age_hours > 12
         except (ValueError, TypeError):
-            result["stale"] = True
+            pass
 
-    return result
-
-
-def compare_with_openmeteo(atlas: dict, om_temp_high: float = None) -> dict:
-    """Compare Atlas forecast with Open-Meteo for gist display."""
-    comparison = {}
-
-    tomorrow = atlas.get("tomorrow", {})
-    if not tomorrow:
-        return comparison
-
-    atlas_high = tomorrow.get("temp_high_f")
-    atlas_wind = tomorrow.get("wind_avg_mph")
-
-    if atlas_high is not None and om_temp_high is not None:
-        comparison["temp_delta"] = round(atlas_high - om_temp_high, 1)
-
-    if atlas_high is not None:
-        comparison["atlas_temp_f"] = atlas_high
-    if atlas_wind is not None:
-        comparison["atlas_wind_mph"] = atlas_wind
-
-    return comparison
+    return {
+        "model": forecast.get("model", "atlas-crps"),
+        "model_params": forecast.get("model_params", ""),
+        "init_time": forecast.get("init_time", ""),
+        "generated_at": gen,
+        "age_hours": round(age_hours, 1) if age_hours is not None else None,
+        "stale": stale,
+        "location": forecast.get("location", {}),
+        "daily": forecast.get("daily", []),
+        "hourly_6h": forecast.get("hourly_6h", []),
+    }
 
 
 def main():
     forecast = read_forecast_gist()
-    result = get_forecast_for_dates(forecast)
-
-    # If called with Open-Meteo temp as argument, add comparison
-    if len(sys.argv) > 1:
-        try:
-            om_high = float(sys.argv[1])
-            atlas = get_forecast_for_dates(forecast)
-            result["comparison"] = compare_with_openmeteo(atlas, om_high)
-        except (ValueError, IndexError):
-            pass
-
+    result = build_output(forecast)
     print(json.dumps(result))
 
 

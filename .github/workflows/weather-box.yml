@@ -27,30 +27,32 @@ jobs:
           STANFORD_DATA=$(python3 .github/scripts/stanford_weather.py 2>/dev/null || echo '{}')
           echo "STANFORD_DATA=$STANFORD_DATA" >> $GITHUB_ENV
 
-      - name: Fetch weather and update gist
+      - name: Fetch AQI and NDVI
         env:
-          GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
           GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
-          GIST_ID: 8fc319438657e698472538bf19a91c1d
-          TZ: America/Los_Angeles
           LAT: "37.44783"
           LON: "-122.13604"
         run: |
-          WEATHER_DATA=$(curl -sf "https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max&hourly=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,apparent_temperature,uv_index&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Los_Angeles&forecast_days=5")
-
           AQI_DATA=$(curl -sf "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}&hourly=pm2_5,pm10,us_aqi&timezone=America/Los_Angeles&forecast_days=1")
+          echo "AQI_DATA=$AQI_DATA" >> $GITHUB_ENV
 
-          # Sentinel-2 NDVI via Google Earth Engine (10m resolution)
           NDVI_DATA=$(python3 .github/scripts/canopy.py 2>/dev/null || echo '{"ndvi":0,"prev_ndvi":0,"date":""}')
+          echo "NDVI_DATA=$NDVI_DATA" >> $GITHUB_ENV
 
+      - name: Build weather gist
+        env:
+          GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+          GIST_ID: 8fc319438657e698472538bf19a91c1d
+          TZ: America/Los_Angeles
+        run: |
           WEATHER=$(python3 -c "
-          import json, sys
-          from datetime import datetime
+          import json, math, sys
+          from datetime import datetime, timedelta
 
-          weather = json.loads(sys.argv[1])
+          atlas = json.loads(sys.argv[1])
           aq = json.loads(sys.argv[2])
           canopy = json.loads(sys.argv[3])
-          stanford = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
+          stanford = json.loads(sys.argv[4])
 
           icons = {
             0:'☀️',1:'🌤',2:'⛅️',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
@@ -67,46 +69,74 @@ jobs:
               m = moon_icon(date_str)
               return m if m in ('🌑','🌕') else ''
 
-          days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
-
-          d = weather['daily']
-          h = weather['hourly']
-
+          days_names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
           now = datetime.now()
-          hour_idx = 0
-          for i, t in enumerate(h['time']):
-              if datetime.strptime(t, '%Y-%m-%dT%H:%M') >= now:
-                  hour_idx = i
-                  break
 
-          # --- Stanford ground truth: override current hour ---
-          stanford_wc = stanford.get('weather_code')
-          if stanford_wc is not None:
-              h['weather_code'][hour_idx] = stanford_wc
-              # Also override current temp/wind/humidity with Stanford obs
-              if stanford.get('temp_f') is not None:
-                  h['temperature_2m'][hour_idx] = stanford['temp_f']
-                  h['apparent_temperature'][hour_idx] = stanford['temp_f']
-              if stanford.get('humidity') is not None:
-                  h['relative_humidity_2m'][hour_idx] = stanford['humidity']
-              if stanford.get('wind_mph') is not None:
-                  h['wind_speed_10m'][hour_idx] = stanford['wind_mph']
+          # --- Sunrise/sunset calculation ---
+          def calc_sun(lat, lon, date):
+              doy = date.timetuple().tm_yday
+              d2r = math.pi / 180
+              r2d = 180 / math.pi
+              lng_h = lon / 15
+              zenith = 90.833
+              results = []
+              for target_h in [6, 18]:
+                  t = doy + (target_h - lng_h) / 24
+                  m = 0.9856 * t - 3.289
+                  l = (m + 1.916*math.sin(m*d2r) + 0.020*math.sin(2*m*d2r) + 282.634) % 360
+                  ra = r2d * math.atan(0.91764 * math.tan(l*d2r))
+                  ra = (ra % 360) + ((l//90)*90 - (ra//90)*90)
+                  ra /= 15
+                  sin_d = 0.39782 * math.sin(l*d2r)
+                  cos_d = math.cos(math.asin(sin_d))
+                  cos_h = (math.cos(zenith*d2r) - sin_d*math.sin(lat*d2r)) / (cos_d*math.cos(lat*d2r))
+                  cos_h = max(-1, min(1, cos_h))
+                  if target_h == 6:
+                      h_ang = (360 - r2d*math.acos(cos_h)) / 15
+                  else:
+                      h_ang = r2d*math.acos(cos_h) / 15
+                  ut = ((h_ang + ra - 0.06571*t - 6.622) - lng_h) % 24
+                  pst = (ut - 8) % 24
+                  results.append(f'{date.strftime(\"%Y-%m-%d\")}T{int(pst):02d}:{int((pst%1)*60):02d}')
+              return results[0], results[1]
 
-          # --- Canopy from Google Earth Engine Sentinel-2 ---
+          sunrise_str, sunset_str = calc_sun(37.4478, -122.136, now)
+          sunrise_t = sunrise_str.split('T')[-1]
+          sunset_t = sunset_str.split('T')[-1]
+          sunrise_hour = int(sunrise_t.split(':')[0])
+          sunset_hour = int(sunset_t.split(':')[0])
+          sunset_min = int(sunset_t.split(':')[1])
+
+          def is_night(dt):
+              return dt.hour > sunset_hour or (dt.hour == sunset_hour and dt.minute >= sunset_min) or dt.hour < sunrise_hour
+          night_clear = {0,1,2}
+          night_overcast = {3,45,48}
+
+          # --- Current conditions from Stanford ---
+          cur_temp = stanford.get('temp_f', 0)
+          cur_hum = stanford.get('humidity', 50)
+          cur_wind = stanford.get('wind_mph', 0)
+          cur_wc = stanford.get('weather_code', 0)
+          cur_feels = cur_temp  # Stanford doesn't compute apparent temp
+
+          # --- Atlas forecast data ---
+          atlas_daily = atlas.get('daily', [])
+          atlas_hourly = atlas.get('hourly_6h', [])
+          init_time = atlas.get('init_time', '')
+          init_dt = None
+          if init_time:
+              try:
+                  init_dt = datetime.fromisoformat(init_time)
+              except: pass
+
+          # --- NDVI ---
           ndvi_val = canopy.get('ndvi', 0)
           ndvi_prev = canopy.get('prev_ndvi', 0)
           ndvi_date = canopy.get('date', '')
-
-          if ndvi_val >= 0.6: canopy_dot = '🟢'
-          elif ndvi_val >= 0.4: canopy_dot = '🟡'
-          elif ndvi_val >= 0.2: canopy_dot = '🟠'
-          else: canopy_dot = '🔴'
-
           delta = ndvi_val - ndvi_prev
           if delta > 0.02: trend = '↑'
           elif delta < -0.02: trend = '↓'
           else: trend = '→'
-
           ndvi_pct = round(ndvi_val * 100)
           ndvi_num = f'{ndvi_val:.2f}'
           if ndvi_val >= 0.9: leaf = '🌴'
@@ -118,7 +148,7 @@ jobs:
           else: leaf = '🏜'
           ndvi_str = f'{leaf}{ndvi_pct}' if ndvi_val > 0 else '🍂--'
 
-          # --- AQI + weather stats ---
+          # --- AQI ---
           aq_h = aq.get('hourly', {})
           aq_times = aq_h.get('time', [])
           aq_idx = 0
@@ -131,30 +161,100 @@ jobs:
           us_aqi = safe(aq_h.get('us_aqi',[]), aq_idx)
           pm25 = safe(aq_h.get('pm2_5',[]), aq_idx)
           pm10 = safe(aq_h.get('pm10',[]), aq_idx)
-          humidity = safe(h.get('relative_humidity_2m',[]), hour_idx)
-          wind = safe(h.get('wind_speed_10m',[]), hour_idx)
-          feels = safe(h.get('apparent_temperature',[]), hour_idx)
-          uv = safe(h.get('uv_index',[]), hour_idx)
-          sunrise = d.get('sunrise',[''])[0].split('T')[-1] if d.get('sunrise') else ''
-          sunset = d.get('sunset',[''])[0].split('T')[-1] if d.get('sunset') else ''
-          uv_max = d.get('uv_index_max',[0])[0] or 0
 
-          # --- Comfort Index (0-100) ---
+          # --- Line 1: Current hour (Stanford) + next hours (Atlas 6h) + NDVI ---
+          parts = []
+          # Current hour from Stanford
+          hr_now = now.strftime('%I%p').lstrip('0').rstrip('M').lower()
+          if is_night(now) and cur_wc in night_clear:
+              ic = moon_icon(now)
+          elif is_night(now) and cur_wc in night_overcast:
+              ic = '🌫'
+          else:
+              ic = icons.get(cur_wc, '☀️')
+          parts.append(f'{hr_now}{ic}')
+
+          # Next Atlas 6h steps (skip past ones)
+          if init_dt and atlas_hourly:
+              for step in atlas_hourly:
+                  step_dt = init_dt + timedelta(hours=step['lead_hours'])
+                  if step_dt <= now:
+                      continue
+                  if len(parts) >= 7:
+                      break
+                  wc = step.get('weather_code', 2)
+                  hr_s = step_dt.strftime('%I%p').lstrip('0').rstrip('M').lower()
+
+                  # Check sunset/sunrise proximity
+                  sunset_dt = datetime.strptime(sunset_str.split('T')[0] + 'T' + sunset_t, '%Y-%m-%dT%H:%M')
+                  diff_sun = abs((step_dt - sunset_dt).total_seconds()) / 3600
+                  if diff_sun < 1:
+                      ev_hr = sunset_dt.strftime('%I:%M%p').lstrip('0').rstrip('M').lower()
+                      if wc in night_clear:
+                          ic = moon_icon(step_dt)
+                      else:
+                          ic = '🌫'
+                      parts.append(f'{ev_hr}{ic}')
+                  elif is_night(step_dt) and wc in night_clear:
+                      ic = moon_icon(step_dt)
+                      parts.append(f'{hr_s}{ic}')
+                  elif is_night(step_dt) and wc in night_overcast:
+                      parts.append(f'{hr_s}🌫')
+                  else:
+                      ic = icons.get(wc, '⛅️')
+                      parts.append(f'{hr_s}{ic}')
+
+          hourly_line = ' '.join(parts[:7])
+          print(f'{hourly_line}  {ndvi_str}')
+
+          # --- Lines 2-5: Daily forecast from Atlas ---
+          today_str = now.strftime('%Y-%m-%d')
+          prev_hi = None
+          shown_moon = set()
+          day_count = 0
+          for day in atlas_daily:
+              if day['date'] <= today_str:
+                  prev_hi = round(day.get('temp_high_f', 65))
+                  continue
+              if day_count >= 4:
+                  break
+              dt = datetime.strptime(day['date'], '%Y-%m-%d')
+              day_name = days_names[dt.weekday()]
+              hi_t = round(day.get('temp_high_f', 65))
+              wc = day.get('weather_code', 2)
+              cloud = day.get('cloud_avg_pct', 50)
+              ic = icons.get(wc, '⛅️')
+
+              delta_t = hi_t - prev_hi if prev_hi is not None else 0
+              moon = moon_phase(day['date'])
+              alert = ''
+              if moon and moon not in shown_moon:
+                  alert = ' ' + moon
+                  shown_moon.add(moon)
+              elif delta_t <= -5: alert = ' 🔻'
+
+              # Show weather icon + cloud %
+              print(f'{day_name} {hi_t:>2}° {ic} ☁{round(cloud)}%{alert}')
+              prev_hi = hi_t
+              day_count += 1
+
+          # Fill remaining days if Atlas doesn't have enough
+          while day_count < 4:
+              print(f'--- --° --')
+              day_count += 1
+
+          # --- Below fold ---
+          print()
+
+          # Comfort index from Stanford current conditions
           comfort = 100.0
-          # Temperature: ideal feels-like 62-75F
-          if feels < 62: comfort -= min(30, (62 - feels) * 1.5)
-          elif feels > 75: comfort -= min(30, (feels - 75) * 2)
-          # Humidity: ideal 35-60%
-          if humidity < 35: comfort -= min(12, (35 - humidity) * 0.6)
-          elif humidity > 60: comfort -= min(15, (humidity - 60) * 0.5)
-          # Wind: ideal 2-12 mph
-          if wind > 12: comfort -= min(12, (wind - 12) * 1.2)
-          elif wind < 2: comfort -= 3
-          # AQI penalty
+          if cur_feels < 62: comfort -= min(30, (62 - cur_feels) * 1.5)
+          elif cur_feels > 75: comfort -= min(30, (cur_feels - 75) * 2)
+          if cur_hum < 35: comfort -= min(12, (35 - cur_hum) * 0.6)
+          elif cur_hum > 60: comfort -= min(15, (cur_hum - 60) * 0.5)
+          if cur_wind > 12: comfort -= min(12, (cur_wind - 12) * 1.2)
+          elif cur_wind < 2: comfort -= 3
           comfort -= min(25, us_aqi * 0.2)
-          # UV penalty (>6 is harsh)
-          if uv > 6: comfort -= min(10, (uv - 6) * 2)
-          # NDVI bonus: green surroundings boost comfort
           if ndvi_val > 0: comfort += min(5, ndvi_val * 8)
           comfort = max(0, min(100, round(comfort)))
           if comfort >= 80: c_dot = '🟢'
@@ -162,138 +262,32 @@ jobs:
           elif comfort >= 40: c_dot = '🟠'
           else: c_dot = '🔴'
 
-          # Parse sunrise/sunset for night detection
-          sunrise_hour = int(sunrise.split(':')[0]) if sunrise else 7
-          sunset_hour = int(sunset.split(':')[0]) if sunset else 20
-          sunset_min = int(sunset.split(':')[1]) if sunset else 0
-          def is_night(dt):
-              return dt.hour > sunset_hour or (dt.hour == sunset_hour and dt.minute >= sunset_min) or dt.hour < sunrise_hour
-          night_clear = {0,1,2}    # clear/partly cloudy - can see moon
-          night_overcast = {3,45,48}  # overcast/fog - can't see moon
-          night_rain = {51,53,55}  # drizzle codes - use 🌧 not 🌦 (has sun)
-
-          # Collect all sunrise/sunset datetimes from forecast
-          sun_events = {}
-          for i in range(len(d['time'])):
-              sr = d.get('sunrise',[])[i] if i < len(d.get('sunrise',[])) else None
-              ss = d.get('sunset',[])[i] if i < len(d.get('sunset',[])) else None
-              if sr:
-                  sr_dt = datetime.strptime(sr, '%Y-%m-%dT%H:%M')
-                  sun_events[sr_dt.strftime('%Y-%m-%d-%H')] = ('sunrise', sr_dt)
-              if ss:
-                  ss_dt = datetime.strptime(ss, '%Y-%m-%dT%H:%M')
-                  sun_events[ss_dt.strftime('%Y-%m-%d-%H')] = ('sunset', ss_dt)
-
-          # Line 1: hourly forecast + NDVI
-          parts = []
-          skip_hours = set()
-          # Find which hours to skip (closest hour to each sun event in range)
-          hour_times = []
-          for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
-              hour_times.append((i, datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')))
-          for key, (icon, ev_dt) in sun_events.items():
-              for idx, (i, ht) in enumerate(hour_times):
-                  diff = abs((ev_dt - ht).total_seconds()) / 3600
-                  if diff < 1:
-                      # This sun event falls in this hour's window
-                      # Skip the nearest rounded hour if it's close
-                      if ev_dt.minute >= 30 and idx + 1 < len(hour_times):
-                          skip_hours.add(hour_times[idx + 1][0])
-                      break
-
-          for i in range(hour_idx, min(hour_idx + 8, len(h['time']))):
-              if i in skip_hours:
-                  continue
-              dt = datetime.strptime(h['time'][i], '%Y-%m-%dT%H:%M')
-              # Check if a sun event falls in this hour
-              key = dt.strftime('%Y-%m-%d-%H')
-              if key in sun_events:
-                  ev_type, ev_dt = sun_events[key]
-                  ev_hr = ev_dt.strftime('%I:%M%p').lstrip('0').rstrip('M').lower()
-                  if ev_type == 'sunset':
-                      wc = h['weather_code'][i]
-                      if wc in night_clear:
-                          ic = moon_icon(dt)
-                      else:
-                          ic = '🌫'
-                  else:  # sunrise - show daytime weather
-                      ic = icons.get(h['weather_code'][i], '?')
-                  parts.append(f'{ev_hr}{ic}')
-              else:
-                  hr = dt.strftime('%I%p').lstrip('0').rstrip('M').lower()
-                  wc = h['weather_code'][i]
-                  if is_night(dt) and wc in night_clear:
-                      ic = moon_icon(dt)
-                  elif is_night(dt) and wc in night_overcast:
-                      ic = '🌫'
-                  elif is_night(dt) and wc in night_rain:
-                      ic = '🌧'
-                  else:
-                      ic = icons.get(wc, '?')
-                  parts.append(f'{hr}{ic}')
-          hourly_line = ' '.join(parts[:8])
-          print(f'{hourly_line}  {ndvi_str}')
-
-          # Lines 2-5: daily with spaced icons
-          def day_icons(day_str):
-              sample = [6, 9, 12, 15, 18, 21]
-              r = []
-              for j, t in enumerate(h['time']):
-                  dt = datetime.strptime(t, '%Y-%m-%dT%H:%M')
-                  if dt.strftime('%Y-%m-%d') == day_str and dt.hour in sample:
-                      wc = h['weather_code'][j]
-                      if is_night(dt) and wc in night_clear:
-                          r.append(moon_icon(dt))
-                      elif is_night(dt) and wc in night_overcast:
-                          r.append('🌫')
-                      elif is_night(dt) and wc in night_rain:
-                          r.append('🌧')
-                      else:
-                          r.append(icons.get(wc, '☁️'))
-              return ' '.join(r)
-
-          prev_hi = round(d['temperature_2m_max'][0])
-          shown_moon = set()
-          for i in range(1, 5):
-              dt = datetime.strptime(d['time'][i], '%Y-%m-%d')
-              day = days[dt.weekday()]
-              hi_t = round(d['temperature_2m_max'][i])
-              hourly = day_icons(d['time'][i])
-              rain = d['precipitation_probability_max'][i] or 0
-              delta_t = hi_t - prev_hi
-              moon = moon_phase(d['time'][i])
-              alert = ''
-              if moon and moon not in shown_moon:
-                  alert = ' ' + moon
-                  shown_moon.add(moon)
-              elif delta_t <= -5: alert = ' 🔻'
-              elif rain >= 50: alert = ' 🌊'
-              print(f'{day} {hi_t:>2}° {hourly}{alert}')
-              prev_hi = hi_t
-
-          # Lines below fold (hidden from pinned preview)
-          print()
-          print(f'🍃 Comfort {comfort}/100 {c_dot}')
-          t_pen = min(30, (62-feels)*1.5) if feels<62 else min(30,(feels-75)*2) if feels>75 else 0
-          h_pen = min(12,(35-humidity)*0.6) if humidity<35 else min(15,(humidity-60)*0.5) if humidity>60 else 0
-          w_pen = min(12,(wind-12)*1.2) if wind>12 else 3 if wind<2 else 0
+          t_pen = min(30, (62-cur_feels)*1.5) if cur_feels<62 else min(30,(cur_feels-75)*2) if cur_feels>75 else 0
+          h_pen = min(12,(35-cur_hum)*0.6) if cur_hum<35 else min(15,(cur_hum-60)*0.5) if cur_hum>60 else 0
+          w_pen = min(12,(cur_wind-12)*1.2) if cur_wind>12 else 3 if cur_wind<2 else 0
           a_pen = min(25, us_aqi*0.2)
-          u_pen = min(10,(uv-6)*2) if uv>6 else 0
           n_bon = min(5, ndvi_val*8) if ndvi_val>0 else 0
-          print(f'  temp {-round(t_pen)} hum {-round(h_pen)} wind {-round(w_pen)} aqi {-round(a_pen)} uv {-round(u_pen)} ndvi +{round(n_bon)}')
+
+          print(f'🍃 Comfort {comfort}/100 {c_dot}')
+          print(f'  temp {-round(t_pen)} hum {-round(h_pen)} wind {-round(w_pen)} aqi {-round(a_pen)} ndvi +{round(n_bon)}')
           src = 'Sentinel-2 10m' if ndvi_val > 0 else 'MODIS'
           ndvi_chg = f'{delta:+.2f}' if ndvi_val > 0 else '--'
           print(f'🛰 NDVI {ndvi_num} ({ndvi_chg}) {trend} [{src}] {ndvi_date}')
           print(f'💨 AQI {us_aqi} | PM2.5 {round(pm25)} | PM10 {round(pm10)} ug/m3')
           sun_lbl = moon_icon(now) if is_night(now) else '☀'
-          print(f'🌡 Feels {round(feels)}° | UV {round(uv,1)}/{round(uv_max,1)} | {sun_lbl} {sunrise}-{sunset}')
-          print(f'💧 Hum {round(humidity)}% | Wind {round(wind)} mph')
-          " "$WEATHER_DATA" "$AQI_DATA" "$NDVI_DATA" "$STANFORD_DATA")
+          print(f'🌡 Feels {round(cur_feels)}° | {sun_lbl} {sunrise_t}-{sunset_t}')
+          print(f'💧 Hum {round(cur_hum)}% | Wind {round(cur_wind)} mph')
+          stale = atlas.get('stale', True)
+          model = atlas.get('model', '?')
+          age = atlas.get('age_hours')
+          age_str = f'{age:.0f}h ago' if age else '?'
+          print(f'🤖 {model} | {age_str}{\" ⚠ STALE\" if stale else \"\"}')
+          " "$E2_DATA" "$AQI_DATA" "$NDVI_DATA" "$STANFORD_DATA")
 
           # Generate cloud cover GeoJSON map
           GEOJSON=$(python3 .github/scripts/cloud_cover.py 2>/dev/null || echo '{"type":"FeatureCollection","features":[]}')
 
-          # Update gist: weather text + cloud cover map
+          # Update gist
           for i in 1 2 3; do
             gh gist edit "$GIST_ID" -f "aircloudy" - <<< "$WEATHER" && break
             echo "Retry $i..." && sleep 5
