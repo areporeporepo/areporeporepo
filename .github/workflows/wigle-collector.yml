@@ -1,0 +1,24 @@
+name: WiGLE WiFi Collector
+
+on:
+  schedule:
+    - cron: '30 18 * * *'  # Daily at 10:30 AM PST (18:30 UTC)
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Collect WiGLE data
+      env:
+        GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
+        WIGLE_API_NAME: ${{ secrets.WIGLE_API_NAME }}
+        WIGLE_API_TOKEN: ${{ secrets.WIGLE_API_TOKEN }}
+        WIGLE_DATA_GIST_ID: ${{ secrets.WIGLE_DATA_GIST_ID }}
+      run: python3 .github/scripts/wigle_collector.py
