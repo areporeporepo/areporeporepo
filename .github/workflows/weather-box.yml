@@ -22,6 +22,11 @@ jobs:
           E2_DATA=$(python3 .github/scripts/earth2_forecast.py 2>/dev/null || echo '{}')
           echo "E2_DATA=$E2_DATA" >> $GITHUB_ENV
 
+      - name: Fetch Stanford ground truth
+        run: |
+          STANFORD_DATA=$(python3 .github/scripts/stanford_weather.py 2>/dev/null || echo '{}')
+          echo "STANFORD_DATA=$STANFORD_DATA" >> $GITHUB_ENV
+
       - name: Fetch weather and update gist
         env:
           GH_TOKEN: ${{ secrets.GH_GIST_TOKEN }}
@@ -45,6 +50,7 @@ jobs:
           weather = json.loads(sys.argv[1])
           aq = json.loads(sys.argv[2])
           canopy = json.loads(sys.argv[3])
+          stanford = json.loads(sys.argv[4]) if len(sys.argv) > 4 else {}
 
           icons = {
             0:'☀️',1:'🌤',2:'⛅️',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
@@ -72,6 +78,19 @@ jobs:
               if datetime.strptime(t, '%Y-%m-%dT%H:%M') >= now:
                   hour_idx = i
                   break
+
+          # --- Stanford ground truth: override current hour ---
+          stanford_wc = stanford.get('weather_code')
+          if stanford_wc is not None:
+              h['weather_code'][hour_idx] = stanford_wc
+              # Also override current temp/wind/humidity with Stanford obs
+              if stanford.get('temp_f') is not None:
+                  h['temperature_2m'][hour_idx] = stanford['temp_f']
+                  h['apparent_temperature'][hour_idx] = stanford['temp_f']
+              if stanford.get('humidity') is not None:
+                  h['relative_humidity_2m'][hour_idx] = stanford['humidity']
+              if stanford.get('wind_mph') is not None:
+                  h['wind_speed_10m'][hour_idx] = stanford['wind_mph']
 
           # --- Canopy from Google Earth Engine Sentinel-2 ---
           ndvi_val = canopy.get('ndvi', 0)
@@ -269,7 +288,7 @@ jobs:
           sun_lbl = moon_icon(now) if is_night(now) else '☀'
           print(f'🌡 Feels {round(feels)}° | UV {round(uv,1)}/{round(uv_max,1)} | {sun_lbl} {sunrise}-{sunset}')
           print(f'💧 Hum {round(humidity)}% | Wind {round(wind)} mph')
-          " "$WEATHER_DATA" "$AQI_DATA" "$NDVI_DATA")
+          " "$WEATHER_DATA" "$AQI_DATA" "$NDVI_DATA" "$STANFORD_DATA")
 
           # Generate cloud cover GeoJSON map
           GEOJSON=$(python3 .github/scripts/cloud_cover.py 2>/dev/null || echo '{"type":"FeatureCollection","features":[]}')
