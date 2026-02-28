@@ -2,7 +2,7 @@ name: Weather Box
 
 on:
   schedule:
-    - cron: "*/15 15-3 * * *" # Every 15 min, 7am-7pm PT (daytime only)
+    - cron: "*/15 0-3,15-23 * * *" # Every 15 min, 7am-7pm PT (daytime only)
   workflow_dispatch: # Manual trigger
 
 jobs:
