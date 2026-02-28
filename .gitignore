@@ -1,2 +1,4 @@
 .vercel
 .venv/
+node_modules/
+test-output.svg
