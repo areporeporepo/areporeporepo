@@ -2,11 +2,11 @@
 Atlas Weather Forecast on Modal (A100 GPU)
 
 Runs NVIDIA Atlas-CRPS (4.3B params) via earth2studio for 5-day forecasts.
-Scheduled 4x/day after GFS cycles. Stores results in GitHub data gist.
+Scheduled 5x/day (every 3h, 7am-7pm PT). Stores results in GitHub data gist.
 
 Deploy:  modal deploy .github/scripts/atlas_modal.py
 Test:    modal run .github/scripts/atlas_modal.py::run_forecast
-Cost:    ~$0.09/run × 4/day × 30 days ≈ $10.80/mo (covered by $30 free credit)
+Cost:    ~$0.09/run × 5/day × 30 days ≈ $13.50/mo (covered by $30 free credit)
 """
 
 import json
@@ -340,7 +340,7 @@ def push_to_gist(payload: dict) -> None:
     image=image,
     volumes={"/weights": volume},
     timeout=2400,
-    schedule=modal.Cron("30 3,9,15,21 * * *"),  # ~3.5h after each GFS cycle
+    schedule=modal.Cron("0 15,18,21,0,3 * * *"),  # Every 3h, 7am-7pm PT
     secrets=[
         modal.Secret.from_name("atlas-secrets", required_keys=[]),
     ],
