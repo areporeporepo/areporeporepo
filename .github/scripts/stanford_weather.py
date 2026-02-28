@@ -68,6 +68,7 @@ def fetch_current():
     precip_day = safe_float("Daily Rain (In)")
     daily_hi = safe_float("Daily Max Temp (°F)")
     daily_lo = safe_float("Daily Min Temp (°F)")
+    aqi = safe_float("NowCast AQI Value ()")
 
     # Derive WMO weather_code from observations
     weather_code = derive_weather_code(temp_f, dew_f, rh, solar, precip, wind_spd)
@@ -84,6 +85,7 @@ def fetch_current():
         "precip_day_in": precip_day,
         "daily_high_f": daily_hi,
         "daily_low_f": daily_lo,
+        "aqi": aqi,
         "weather_code": weather_code,
         "source": "stanford-met-tower",
         "obs_time": f"{row.get('Date', '')} {row.get('Time', '')}".strip(),
@@ -93,7 +95,7 @@ def fetch_current():
 def derive_weather_code(temp_f, dew_f, rh, solar, precip, wind_mph):
     """Derive WMO weather code from Stanford observations.
 
-    WMO codes used by Open-Meteo:
+    WMO weather codes:
       0=clear, 1=mainly clear, 2=partly cloudy, 3=overcast,
       45=fog, 51/53/55=drizzle, 61/63/65=rain
     """

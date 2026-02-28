@@ -85,35 +85,58 @@ def specific_to_relative_humidity(q, t_kelvin, p_hpa):
 def estimate_cloud_cover(rh_850, rh_700, rh_500, tcwv):
     """Estimate cloud fraction (0-100) from multi-level relative humidity + tcwv.
 
-    Based on Sundqvist (1989) cloud parameterization used in NWP models:
-    cloud_fraction = 1 - sqrt((1 - RH) / (1 - RH_crit))
-    where RH_crit varies by level (~0.7 for low, ~0.6 for mid, ~0.5 for high).
+    When pressure-level RH is available, uses Sundqvist (1989) parameterization.
+    When only tcwv is available, estimates cloud cover from total column water vapor
+    using empirical thresholds for mid-latitude coastal California.
     """
     import math
 
-    def sundqvist_cf(rh_pct, rh_crit):
-        rh = rh_pct / 100
-        if rh <= rh_crit:
-            return 0.0
-        if rh >= 1.0:
-            return 1.0
-        return 1.0 - math.sqrt(max(0, (1 - rh) / (1 - rh_crit)))
+    has_rh = any(v is not None for v in [rh_850, rh_700, rh_500])
 
-    # Cloud fraction at each level
-    cf_low = sundqvist_cf(rh_850, 0.70) if rh_850 is not None else 0
-    cf_mid = sundqvist_cf(rh_700, 0.60) if rh_700 is not None else 0
-    cf_high = sundqvist_cf(rh_500, 0.50) if rh_500 is not None else 0
+    if has_rh:
+        # Sundqvist (1989) cloud parameterization
+        def sundqvist_cf(rh_pct, rh_crit):
+            rh = rh_pct / 100
+            if rh <= rh_crit:
+                return 0.0
+            if rh >= 1.0:
+                return 1.0
+            return 1.0 - math.sqrt(max(0, (1 - rh) / (1 - rh_crit)))
 
-    # Total cloud cover: maximum-random overlap
-    # Simplified: use max overlap (conservative estimate)
-    total_cf = 1 - (1 - cf_low) * (1 - cf_mid) * (1 - cf_high)
+        cf_low = sundqvist_cf(rh_850, 0.70) if rh_850 is not None else 0
+        cf_mid = sundqvist_cf(rh_700, 0.60) if rh_700 is not None else 0
+        cf_high = sundqvist_cf(rh_500, 0.50) if rh_500 is not None else 0
 
-    # Adjust with tcwv as sanity check
-    # Very low tcwv (<8 kg/m2) → cap cloud cover
-    if tcwv is not None and tcwv < 8:
-        total_cf = min(total_cf, 0.2)
+        total_cf = 1 - (1 - cf_low) * (1 - cf_mid) * (1 - cf_high)
 
-    return round(total_cf * 100, 1)
+        # tcwv sanity check
+        if tcwv is not None and tcwv < 8:
+            total_cf = min(total_cf, 0.2)
+
+        return round(total_cf * 100, 1)
+
+    # Fallback: estimate from tcwv alone
+    # Palo Alto typical ranges (kg/m2):
+    #   < 8: very dry, clear
+    #   8-15: dry, mostly clear
+    #   15-22: moderate, partly cloudy
+    #   22-30: moist, mostly cloudy
+    #   > 30: very moist, overcast/rain
+    if tcwv is not None:
+        if tcwv < 8:
+            cf = 5.0
+        elif tcwv < 15:
+            cf = 5 + (tcwv - 8) * (25 / 7)  # 5-30%
+        elif tcwv < 22:
+            cf = 30 + (tcwv - 15) * (30 / 7)  # 30-60%
+        elif tcwv < 30:
+            cf = 60 + (tcwv - 22) * (25 / 8)  # 60-85%
+        else:
+            cf = 85 + min(15, (tcwv - 30) * 1.5)  # 85-100%
+        return round(min(100, cf), 1)
+
+    # No data at all
+    return 50.0
 
 
 def cloud_cover_to_weather_code(cloud_pct, tp=None):

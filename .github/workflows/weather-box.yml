@@ -27,15 +27,12 @@ jobs:
           STANFORD_DATA=$(python3 .github/scripts/stanford_weather.py 2>/dev/null || echo '{}')
           echo "STANFORD_DATA=$STANFORD_DATA" >> $GITHUB_ENV
 
-      - name: Fetch AQI and NDVI
+      - name: Fetch NDVI
         env:
           GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
           LAT: "37.44783"
           LON: "-122.13604"
         run: |
-          AQI_DATA=$(curl -sf "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}&hourly=pm2_5,pm10,us_aqi&timezone=America/Los_Angeles&forecast_days=1")
-          echo "AQI_DATA=$AQI_DATA" >> $GITHUB_ENV
-
           NDVI_DATA=$(python3 .github/scripts/canopy.py 2>/dev/null || echo '{"ndvi":0,"prev_ndvi":0,"date":""}')
           echo "NDVI_DATA=$NDVI_DATA" >> $GITHUB_ENV
 
@@ -50,9 +47,8 @@ jobs:
           from datetime import datetime, timedelta
 
           atlas = json.loads(sys.argv[1])
-          aq = json.loads(sys.argv[2])
-          canopy = json.loads(sys.argv[3])
-          stanford = json.loads(sys.argv[4])
+          canopy = json.loads(sys.argv[2])
+          stanford = json.loads(sys.argv[3])
 
           icons = {
             0:'☀️',1:'🌤',2:'⛅️',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌦',
@@ -119,6 +115,9 @@ jobs:
           cur_wc = stanford.get('weather_code', 0)
           cur_feels = cur_temp  # Stanford doesn't compute apparent temp
 
+          # --- AQI from Stanford ---
+          us_aqi = stanford.get('aqi') or 0
+
           # --- Atlas forecast data ---
           atlas_daily = atlas.get('daily', [])
           atlas_hourly = atlas.get('hourly_6h', [])
@@ -147,20 +146,6 @@ jobs:
           elif ndvi_val >= 0.15: leaf = '🍂'
           else: leaf = '🏜'
           ndvi_str = f'{leaf}{ndvi_pct}' if ndvi_val > 0 else '🍂--'
-
-          # --- AQI ---
-          aq_h = aq.get('hourly', {})
-          aq_times = aq_h.get('time', [])
-          aq_idx = 0
-          for i, t in enumerate(aq_times):
-              if datetime.strptime(t, '%Y-%m-%dT%H:%M') >= now:
-                  aq_idx = max(0, i - 1)
-                  break
-          def safe(arr, idx):
-              return (arr[min(idx, len(arr)-1)] if arr else 0) or 0
-          us_aqi = safe(aq_h.get('us_aqi',[]), aq_idx)
-          pm25 = safe(aq_h.get('pm2_5',[]), aq_idx)
-          pm10 = safe(aq_h.get('pm10',[]), aq_idx)
 
           # --- Line 1: Current hour (Stanford) + next hours (Atlas 6h) + NDVI ---
           parts = []
@@ -273,7 +258,7 @@ jobs:
           src = 'Sentinel-2 10m' if ndvi_val > 0 else 'MODIS'
           ndvi_chg = f'{delta:+.2f}' if ndvi_val > 0 else '--'
           print(f'🛰 NDVI {ndvi_num} ({ndvi_chg}) {trend} [{src}] {ndvi_date}')
-          print(f'💨 AQI {us_aqi} | PM2.5 {round(pm25)} | PM10 {round(pm10)} ug/m3')
+          print(f'💨 AQI {round(us_aqi)} [Stanford]')
           sun_lbl = moon_icon(now) if is_night(now) else '☀'
           print(f'🌡 Feels {round(cur_feels)}° | {sun_lbl} {sunrise_t}-{sunset_t}')
           print(f'💧 Hum {round(cur_hum)}% | Wind {round(cur_wind)} mph')
@@ -282,9 +267,9 @@ jobs:
           age = atlas.get('age_hours')
           age_str = f'{age:.0f}h ago' if age else '?'
           print(f'🤖 {model} | {age_str}{\" ⚠ STALE\" if stale else \"\"}')
-          " "$E2_DATA" "$AQI_DATA" "$NDVI_DATA" "$STANFORD_DATA")
+          " "$E2_DATA" "$NDVI_DATA" "$STANFORD_DATA")
 
-          # Generate cloud cover GeoJSON map
+          # Generate cloud cover GeoJSON map (uses Atlas data via E2_DATA env)
           GEOJSON=$(python3 .github/scripts/cloud_cover.py 2>/dev/null || echo '{"type":"FeatureCollection","features":[]}')
 
           # Update gist

@@ -2,8 +2,7 @@
 Earth-2 Atlas Accuracy Tracker
 
 Compares yesterday's Atlas predictions against actual observations.
-Ground truth: KPAO METAR (Palo Alto Airport, 1.5 mi from home),
-fallback to Open-Meteo archive API.
+Ground truth: Stanford Met Tower (~2 mi from home, 15-min updates).
 
 Calculates MAE, appends to accuracy log in data gist.
 
@@ -21,13 +20,8 @@ from datetime import datetime, timedelta
 
 
 FORECAST_GIST_ID = os.environ.get("FORECAST_GIST_ID", "")
-PA_LAT = "37.44783"
-PA_LON = "-122.13604"
 
-# Ground truth stations (in priority order)
-# 1. Stanford Met Tower (~2 mi) — 15-min updates, CSV export, solar radiation for cloud proxy
-# 2. KPAO Palo Alto Airport AWOS (1.5 mi) — METAR, cloud cover obs
-METAR_STATION = "KPAO"
+# Ground truth: Stanford Met Tower (~2 mi) — 15-min updates, CSV export
 STANFORD_CSV_URL = "https://stanford.westernweathergroup.com/reports/export/csv"
 
 
@@ -168,93 +162,6 @@ def fetch_stanford_actual(date_str: str) -> dict:
         return {}
 
 
-def fetch_kpao_actual(date_str: str) -> dict:
-    """Fetch actual observations from KPAO METAR via aviationweather.gov.
-
-    Retrieves all METARs for the given date, extracts high/low temp and max wind.
-    """
-    import urllib.request
-
-    # Fetch 24h of METARs: hours param goes backwards from date
-    next_day = (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-    url = (
-        f"https://aviationweather.gov/api/data/metar"
-        f"?ids={METAR_STATION}&format=json"
-        f"&date={next_day}T00:00:00Z&hours=24"
-    )
-
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "atlas-accuracy/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            metars = json.loads(resp.read().decode())
-
-        if not metars:
-            print(f"No KPAO METARs for {date_str}", file=sys.stderr)
-            return {}
-
-        temps_c = []
-        winds_kt = []
-        for m in metars:
-            obs_time = m.get("reportTime", m.get("obsTime", ""))
-            if not obs_time.startswith(date_str):
-                continue
-            if m.get("temp") is not None:
-                temps_c.append(m["temp"])
-            wspd = m.get("wspd")
-            wgst = m.get("wgst")
-            if wspd is not None:
-                winds_kt.append(max(wspd, wgst or 0))
-
-        if not temps_c:
-            return {}
-
-        # Convert: C→F, knots→mph
-        temps_f = [round(c * 9 / 5 + 32, 1) for c in temps_c]
-        winds_mph = [round(kt * 1.15078, 1) for kt in winds_kt] if winds_kt else []
-
-        return {
-            "date": date_str,
-            "source": f"{METAR_STATION}-metar",
-            "station": METAR_STATION,
-            "obs_count": len(temps_c),
-            "temp_high_f": max(temps_f),
-            "temp_low_f": min(temps_f),
-            "wind_max_mph": max(winds_mph) if winds_mph else None,
-        }
-    except Exception as e:
-        print(f"KPAO fetch failed: {e}", file=sys.stderr)
-        return {}
-
-
-def fetch_openmeteo_actual(date_str: str) -> dict:
-    """Fallback: fetch actuals from Open-Meteo historical API."""
-    import urllib.request
-
-    url = (
-        f"https://archive-api.open-meteo.com/v1/archive"
-        f"?latitude={PA_LAT}&longitude={PA_LON}"
-        f"&start_date={date_str}&end_date={date_str}"
-        f"&daily=temperature_2m_max,temperature_2m_min,wind_speed_10m_max"
-        f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
-        f"&timezone=America/Los_Angeles"
-    )
-
-    try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-            daily = data.get("daily", {})
-            return {
-                "date": date_str,
-                "source": "open-meteo-archive",
-                "temp_high_f": daily.get("temperature_2m_max", [None])[0],
-                "temp_low_f": daily.get("temperature_2m_min", [None])[0],
-                "wind_max_mph": daily.get("wind_speed_10m_max", [None])[0],
-            }
-    except Exception as e:
-        print(f"Open-Meteo fetch failed: {e}", file=sys.stderr)
-        return {}
-
-
 def get_atlas_prediction(date_str: str) -> dict:
     """Get Atlas prediction for a specific date from cached forecast."""
     if not FORECAST_GIST_ID:
@@ -306,16 +213,10 @@ def main():
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     print(f"Checking accuracy for {yesterday}")
 
-    # Fetch actual observations: Stanford → KPAO → Open-Meteo
+    # Fetch actual observations from Stanford Met Tower
     actual = fetch_stanford_actual(yesterday)
     if not actual or actual.get("temp_high_f") is None:
-        print("Stanford unavailable, trying KPAO METAR...")
-        actual = fetch_kpao_actual(yesterday)
-    if not actual or actual.get("temp_high_f") is None:
-        print("KPAO unavailable, trying Open-Meteo archive...")
-        actual = fetch_openmeteo_actual(yesterday)
-    if not actual or actual.get("temp_high_f") is None:
-        print("No actuals available yet, skipping")
+        print("Stanford data unavailable, skipping")
         return
     print(f"Ground truth: {actual.get('source')} ({actual.get('obs_count', '?')} obs)")
     if actual.get("cloud_pct_est") is not None:

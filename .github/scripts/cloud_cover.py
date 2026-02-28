@@ -1,93 +1,78 @@
-"""Generate GeoJSON cloud cover map from ECMWF IFS via Open-Meteo.
+"""Generate GeoJSON cloud cover map from Atlas forecast + Stanford stations.
 
-Queries cloud cover at a 6x6 grid over the Bay Area, scrapes live
-Stanford weather station data, and generates GeoJSON with cloud
-density polygons + station markers.
+Reads Atlas forecast data (from E2_DATA env var) for cloud cover,
+scrapes live Stanford weather station data for station markers.
 
-Uses ECMWF IFS 0.25 (9km) for cloud grid.
+Atlas provides 0.25° resolution cloud cover at the Palo Alto grid point.
 Stanford weather stations update every 15 minutes.
 
 Outputs GeoJSON to stdout.
 """
 import json
+import os
 import re
 import sys
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 
-# Bay Area bounding box for cloud cover grid
+# Bay Area bounding box for display
 GRID_LAT_MIN = 37.25
 GRID_LAT_MAX = 37.65
 GRID_LON_MIN = -122.55
 GRID_LON_MAX = -121.95
-GRID_ROWS = 6
-GRID_COLS = 6
 
 # General Palo Alto center (not exact home)
 HOME_LAT = 37.4419
 HOME_LON = -122.1430
 
-# METAR stations
-METAR_STATIONS = [
-    {"name": "KPAO", "label": "Palo Alto Airport", "lat": 37.461, "lon": -122.115, "color": "#2196F3"},
-    {"name": "KNUQ", "label": "Moffett Field (NASA)", "lat": 37.4161, "lon": -122.0496, "color": "#2196F3"},
-    {"name": "KSQL", "label": "San Carlos Airport", "lat": 37.5122, "lon": -122.2508, "color": "#2196F3"},
-    {"name": "KSFO", "label": "San Francisco Intl", "lat": 37.6213, "lon": -122.3750, "color": "#9C27B0"},
-    {"name": "KSJC", "label": "San Jose Intl", "lat": 37.3626, "lon": -121.9289, "color": "#9C27B0"},
-]
 
+def get_atlas_cloud_cover():
+    """Get current cloud cover from Atlas forecast (E2_DATA env var)."""
+    e2_raw = os.environ.get("E2_DATA", "{}")
+    try:
+        atlas = json.loads(e2_raw)
+    except json.JSONDecodeError:
+        return None
 
-def fetch_cloud_grid():
-    """Fetch cloud cover at grid points from Open-Meteo ECMWF IFS."""
-    lat_step = (GRID_LAT_MAX - GRID_LAT_MIN) / GRID_ROWS
-    lon_step = (GRID_LON_MAX - GRID_LON_MIN) / GRID_COLS
-
-    grid_data = []
-    for r in range(GRID_ROWS):
-        for c in range(GRID_COLS):
-            lat = GRID_LAT_MIN + (r + 0.5) * lat_step
-            lon = GRID_LON_MIN + (c + 0.5) * lon_step
-            grid_data.append({"lat": lat, "lon": lon, "row": r, "col": c})
-
-    lats = ",".join(f"{p['lat']:.4f}" for p in grid_data)
-    lons = ",".join(f"{p['lon']:.4f}" for p in grid_data)
-
-    url = (
-        f"https://api.open-meteo.com/v1/ecmwf?"
-        f"latitude={lats}&longitude={lons}"
-        f"&hourly=cloud_cover"
-        f"&models=ecmwf_ifs025"
-        f"&timezone=America/Los_Angeles"
-        f"&forecast_days=1"
-    )
+    init_time = atlas.get("init_time", "")
+    hourly = atlas.get("hourly_6h", [])
+    if not init_time or not hourly:
+        return None
 
     try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-    except Exception as e:
-        print(f"Warning: cloud cover fetch failed: {e}", file=sys.stderr)
-        return grid_data
+        init_dt = datetime.fromisoformat(init_time)
+    except (ValueError, TypeError):
+        return None
 
     now = datetime.now()
-    results = data if isinstance(data, list) else [data]
 
-    for i, point in enumerate(grid_data):
-        if i >= len(results):
-            point["cloud_cover"] = 0
-            continue
-        hourly = results[i].get("hourly", {})
-        times = hourly.get("time", [])
-        cc = hourly.get("cloud_cover", [])
-        hour_idx = 0
-        for j, t in enumerate(times):
-            if datetime.strptime(t, "%Y-%m-%dT%H:%M") >= now:
-                hour_idx = max(0, j - 1)
-                break
-        val = cc[hour_idx] if hour_idx < len(cc) else None
-        point["cloud_cover"] = val if val is not None else 0
+    # Find the closest 6h step to now
+    best_step = None
+    best_diff = float("inf")
+    for step in hourly:
+        step_dt = init_dt + timedelta(hours=step["lead_hours"])
+        diff = abs((step_dt - now).total_seconds())
+        if diff < best_diff:
+            best_diff = diff
+            best_step = step
 
-    return grid_data
+    if best_step is None:
+        return None
+
+    grid_lat = atlas.get("location", {}).get("grid_lat", HOME_LAT)
+    grid_lon_360 = atlas.get("location", {}).get("grid_lon", 360 + HOME_LON)
+    # Convert 0-360 back to -180..180
+    grid_lon = grid_lon_360 - 360 if grid_lon_360 > 180 else grid_lon_360
+
+    return {
+        "cloud_pct": best_step.get("cloud_pct", 0) or 0,
+        "weather_code": best_step.get("weather_code", 0),
+        "temp_f": best_step.get("temp_f"),
+        "grid_lat": grid_lat,
+        "grid_lon": grid_lon,
+        "model": atlas.get("model", "atlas-crps"),
+        "init_time": init_time,
+    }
 
 
 def fetch_stanford_weather():
@@ -101,7 +86,6 @@ def fetch_stanford_weather():
         print(f"Warning: Stanford weather fetch failed: {e}", file=sys.stderr)
         return None
 
-    # Split HTML by station sections and parse each
     met_idx = html.find("Met Tower")
     rwc_idx = html.find("Redwood City")
     if met_idx < 0:
@@ -119,7 +103,6 @@ def fetch_stanford_weather():
     met = parse_rows(met_html)
     rwc = parse_rows(rwc_html) if rwc_html else {}
 
-    # Parse timestamp
     ts_match = re.search(r'(\d+/\d+/\d+\s+\d+:\d+\s*[AP]M)', html)
     timestamp = ts_match.group(1) if ts_match else ""
 
@@ -146,52 +129,48 @@ def fetch_stanford_weather():
     }
 
 
-def build_geojson(grid_data, stanford):
+def build_geojson(atlas_cloud, stanford):
     """Build GeoJSON FeatureCollection."""
-    lat_step = (GRID_LAT_MAX - GRID_LAT_MIN) / GRID_ROWS
-    lon_step = (GRID_LON_MAX - GRID_LON_MIN) / GRID_COLS
     features = []
 
-    # Cloud cover grid polygons
-    for point in grid_data:
-        cc = point.get("cloud_cover", 0) or 0
-        if cc < 5:
-            continue
-        lat = point["lat"]
-        lon = point["lon"]
-        half_lat = lat_step / 2
-        half_lon = lon_step / 2
-        opacity = round(0.03 + (cc / 100) * 0.42, 2)
-        if cc >= 80:
-            fill = "#9E9E9E"
-        elif cc >= 50:
-            fill = "#BDBDBD"
-        else:
-            fill = "#E0E0E0"
-        features.append({
-            "type": "Feature",
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [round(lon - half_lon, 5), round(lat - half_lat, 5)],
-                    [round(lon + half_lon, 5), round(lat - half_lat, 5)],
-                    [round(lon + half_lon, 5), round(lat + half_lat, 5)],
-                    [round(lon - half_lon, 5), round(lat + half_lat, 5)],
-                    [round(lon - half_lon, 5), round(lat - half_lat, 5)],
-                ]]
-            },
-            "properties": {
-                "stroke": fill,
-                "stroke-width": 0,
-                "stroke-opacity": 0,
-                "fill": fill,
-                "fill-opacity": opacity,
-                "title": f"{cc}% cloud cover",
-                "description": f"ECMWF IFS 0.25 / {lat:.2f}N {abs(lon):.2f}W"
-            }
-        })
+    # Atlas cloud cover — single polygon covering the forecast area
+    if atlas_cloud:
+        cc = atlas_cloud["cloud_pct"]
+        if cc >= 5:
+            opacity = round(0.03 + (cc / 100) * 0.42, 2)
+            if cc >= 80:
+                fill = "#9E9E9E"
+            elif cc >= 50:
+                fill = "#BDBDBD"
+            else:
+                fill = "#E0E0E0"
+            features.append({
+                "type": "Feature",
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [GRID_LON_MIN, GRID_LAT_MIN],
+                        [GRID_LON_MAX, GRID_LAT_MIN],
+                        [GRID_LON_MAX, GRID_LAT_MAX],
+                        [GRID_LON_MIN, GRID_LAT_MAX],
+                        [GRID_LON_MIN, GRID_LAT_MIN],
+                    ]]
+                },
+                "properties": {
+                    "stroke": fill,
+                    "stroke-width": 0,
+                    "stroke-opacity": 0,
+                    "fill": fill,
+                    "fill-opacity": opacity,
+                    "title": f"{cc}% cloud cover",
+                    "description": (
+                        f"Atlas-CRPS forecast / "
+                        f"{atlas_cloud['grid_lat']:.2f}N {abs(atlas_cloud['grid_lon']):.2f}W"
+                    )
+                }
+            })
 
-    # Stanford Met Tower (live, 15-min updates)
+    # Stanford Met Tower
     if stanford:
         mt = stanford["met_tower"]
         ts = stanford["timestamp"]
@@ -239,23 +218,12 @@ def build_geojson(grid_data, stanford):
             "marker-size": "large",
             "marker-symbol": "star",
             "title": "Palo Alto",
-            "description": "ECMWF IFS forecast point"
+            "description": (
+                f"Atlas-CRPS forecast point"
+                + (f" / {atlas_cloud['cloud_pct']}% cloud" if atlas_cloud else "")
+            )
         }
     })
-
-    # METAR stations
-    for s in METAR_STATIONS:
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [s["lon"], s["lat"]]},
-            "properties": {
-                "marker-color": s["color"],
-                "marker-size": "medium",
-                "marker-symbol": "airport",
-                "title": f"{s['name']} - {s['label']}",
-                "description": "METAR station / surface observations"
-            }
-        })
 
     # Forecast grid outline
     features.append({
@@ -276,8 +244,8 @@ def build_geojson(grid_data, stanford):
             "stroke-opacity": 0.3,
             "fill": "#ff4444",
             "fill-opacity": 0.02,
-            "title": "ECMWF IFS Grid",
-            "description": "25km resolution / forecast area"
+            "title": "Atlas Forecast Grid",
+            "description": "0.25° resolution / forecast area"
         }
     })
 
@@ -285,9 +253,9 @@ def build_geojson(grid_data, stanford):
 
 
 def main():
-    grid = fetch_cloud_grid()
+    atlas_cloud = get_atlas_cloud_cover()
     stanford = fetch_stanford_weather()
-    geojson = build_geojson(grid, stanford)
+    geojson = build_geojson(atlas_cloud, stanford)
     print(json.dumps(geojson, indent=2))
 
 
