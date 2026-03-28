@@ -1,0 +1,83 @@
+name: Log Workout from Apple Watch
+
+on:
+  workflow_dispatch:
+    inputs:
+      workout_type:
+        description: "Workout type (e.g. Running, Cycling, Strength Training)"
+        required: true
+        type: string
+      duration_minutes:
+        description: "Duration in minutes"
+        required: true
+        type: string
+      calories_burned:
+        description: "Active calories burned"
+        required: true
+        type: string
+      heart_rate_avg:
+        description: "Average heart rate (bpm)"
+        required: false
+        type: string
+        default: ""
+      distance_km:
+        description: "Distance in kilometers (if applicable)"
+        required: false
+        type: string
+        default: ""
+      date:
+        description: "Workout date (ISO 8601, e.g. 2026-03-28T07:30:00)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  log-workout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Log workout data
+        run: |
+          WORKOUT_DATE="${{ inputs.date }}"
+          if [ -z "$WORKOUT_DATE" ]; then
+            WORKOUT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          fi
+
+          # Build the new workout entry
+          NEW_ENTRY=$(jq -n \
+            --arg type "${{ inputs.workout_type }}" \
+            --arg duration "${{ inputs.duration_minutes }}" \
+            --arg calories "${{ inputs.calories_burned }}" \
+            --arg hr "${{ inputs.heart_rate_avg }}" \
+            --arg dist "${{ inputs.distance_km }}" \
+            --arg date "$WORKOUT_DATE" \
+            '{
+              date: $date,
+              type: $type,
+              duration_minutes: ($duration | tonumber),
+              calories_burned: ($calories | tonumber),
+              heart_rate_avg: (if $hr == "" then null else ($hr | tonumber) end),
+              distance_km: (if $dist == "" then null else ($dist | tonumber) end)
+            }')
+
+          # Append to workouts.json
+          jq --argjson entry "$NEW_ENTRY" '. + [$entry]' data/workouts.json > tmp.json
+          mv tmp.json data/workouts.json
+
+      - name: Update README with latest stats
+        run: |
+          python3 scripts/update_readme.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "Workout Bot"
+          git config user.email "workout-bot@users.noreply.github.com"
+          git add data/workouts.json README.md
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "workout: log ${{ inputs.workout_type }} (${{ inputs.duration_minutes }}min, ${{ inputs.calories_burned }}cal)"
+          git push

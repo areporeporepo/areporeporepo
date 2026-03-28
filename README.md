@@ -1,16 +1,23 @@
-## Hi there 👋
+## Hi there, I'm John
 
-<!--
-**areporeporepo/areporeporepo** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+My AI-powered health dashboard — auto-updated from my Apple Watch via iOS Shortcuts.
 
-Here are some ideas to get you started:
+---
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## Workout Stats
+
+<!-- WORKOUT-STATS:START -->
+### No workouts logged yet
+Waiting for the first Apple Watch workout...
+<!-- WORKOUT-STATS:END -->
+
+---
+
+## How It Works
+
+Every time I finish a workout on my Apple Watch, an iOS Shortcut automatically:
+1. Grabs the workout data from Apple Health
+2. Triggers a GitHub Action via the API
+3. The action logs the data and updates this README
+
+*Powered by Apple Watch + iOS 26 Shortcuts + GitHub Actions*
